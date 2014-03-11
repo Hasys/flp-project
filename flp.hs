@@ -11,17 +11,17 @@ import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
 
 aelDef = emptyDef
-	{ commentStart   = "{"
-	, commentEnd     = "}"
-	, nestedComments = False
-	, identStart     = letter <|> char '_'
-	, identLetter    = alphaNum <|> char '_'
-	, opStart        = oneOf "'=+*-"
-	, opLetter       = opStart aelDef
-	, reservedOpNames= [ ":=", "=", "+", "*", "-", "/", "<>", "(", ")", ".", ":" ]
-	, reservedNames  = [ "writeln", "readln", "while", "do", "if", "then", "else", "begin", "end",
-                       "div", "double", "integer", "string", "var" ]
-	, caseSensitive  = True
+  { commentStart   = "{"
+  , commentEnd     = "}"
+  , nestedComments = False
+  , identStart     = letter <|> char '_'
+  , identLetter    = alphaNum <|> char '_'
+  , opStart        = oneOf "'=+*-"
+  , opLetter       = opStart aelDef
+  , reservedOpNames= [ ":=", "=", "+", "*", "-", "/", "<>", "(", ")", ".", ":" ]
+  , reservedNames  = [ "writeln", "readln", "while", "do", "if", "then", "else", "begin", "end",
+                       "div", "double", "integer", "string", "var", "function" ]
+  , caseSensitive  = True
   }
 
 lexer = P.makeTokenParser aelDef
@@ -37,7 +37,7 @@ stringConst = P.stringLiteral lexer
 
 aep = do
   whiteSpace
-  ast <- cmd
+  ast <- many sections
   eof
   return ast
   <?> "aep"
@@ -49,7 +49,32 @@ data Command = Empty
   | Seq [ Command ]
   | If BoolExpr Command Command
   | While BoolExpr Command 
-	deriving Show
+  | Program [ Command ]
+  | Vars
+  | Function
+  deriving Show
+
+data Section = Main [ Command ]
+  deriving Show
+
+sections = do
+    reserved "var"
+    semi
+    return $ Empty
+  <|> do 
+    reserved "begin"
+    program <- many cmd
+    reserved "end"
+    reservedOp "."
+    return $ Program program
+  <|> do
+    reserved "function"
+    reservedOp "("
+    reservedOp ")"
+    reservedOp ":"
+    semi
+    return $ Empty
+  <?> "sections"
 
 cmd = do
     semi
@@ -92,6 +117,7 @@ cmd = do
     reserved "begin"
     seq <- many cmd
     reserved "end"
+    reservedOp ";"
     return $ Seq seq
   <?> "command"
 
@@ -112,14 +138,6 @@ expr = buildExpressionParser operators term where
   op name fun =
     Infix ( do { reservedOp name; return fun } ) AssocLeft
 
---vars = do
---  reserved "var"
---  v <- var
---  semi
---  return $ Var v
---  <?> "var_section"
-
-
 term = do
     i <- integer
     return $ Const $ fromInteger i
@@ -134,12 +152,7 @@ term = do
 
 data BoolExpr = Equal Expr Expr
   | NotEqual Expr Expr 
-	deriving Show
-
---data DataTypes = TString [Char]
---  | TInteger Integer
---  | TDouble Double
---  deriving Show
+  deriving Show
 
 boolExpr = do
     e1 <- expr
@@ -160,16 +173,16 @@ type SymbolTable = [(String, Int)]
 set :: SymbolTable -> String -> Int -> SymbolTable
 set [] var val = [(var, val)]
 set (s@(v,_):ss) var val =
-	if v == var
-		then (var, val):ss
-		else s : set ss var val
+  if v == var
+    then (var, val):ss
+    else s : set ss var val
 
-get :: SymbolTable -> String -> Int		
+get :: SymbolTable -> String -> Int   
 get [] _ = error "Not found"
 get (s@(var, val):ss) v =
-	if v == var
-		then val
-		else get ss v
+  if v == var
+    then val
+    else get ss v
 
 evaluate :: SymbolTable -> Expr -> Int
 evaluate ts (Const i) = i
@@ -184,7 +197,22 @@ decide :: SymbolTable -> BoolExpr -> Bool
 decide ts (Equal a b) = evaluate ts a == evaluate ts b
 decide ts (NotEqual a b) = evaluate ts a /= evaluate ts b
 
+startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
+startInterpret ts (c:cs) = do
+  ts' <- interpret ts c
+  interpret ts' $ Program cs
+--startInterpret ts [] = return ts
+
+
 interpret :: SymbolTable -> Command -> IO SymbolTable
+interpret ts (Vars) = return ts
+
+interpret ts (Function) = return ts
+
+interpret ts (Program []) = return ts
+interpret ts (Program (c:cs)) = do  
+  ts' <- interpret ts c
+  interpret ts' $ Program cs
 
 interpret ts (Empty) = return ts
 
@@ -209,18 +237,18 @@ interpret ts w@(While cond c) = do
       ts' <- interpret ts c
       interpret ts' w
     else return ts
-  
+
 interpret ts (Seq []) = return ts
 interpret ts (Seq (c:cs)) = do
   ts' <- interpret ts c
   interpret ts' $ Seq cs
   
 parseAep input file =
-	case parse aep file input of
-		Left e -> error $ show e
-		Right ast -> ast 
+  case parse aep file input of
+    Left e -> error $ show e
+    Right ast -> ast 
 
-		
+    
 main = do
   args <- getArgs
   if length args /= 1
@@ -229,6 +257,6 @@ main = do
       let fileName = args!!0
       input <- readFile fileName
       let ast = parseAep input fileName
-      interpret [] ast 
+      startInterpret [] ast 
 
 --end demo.hs
