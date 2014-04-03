@@ -5,6 +5,7 @@ function ():;
 var ;
 
 begin
+	writeln("sdfasf");
 	readln(p) ;
 	res := 1;
 	while p <> 0 do begin

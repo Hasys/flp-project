@@ -45,6 +45,7 @@ aep = do
 data Command = Empty
   | Assign String Expr
   | Writeln Expr
+  | Writelns String
   | Readln String
   | Seq [ Command ]
   | If BoolExpr Command Command
@@ -117,7 +118,7 @@ cmd = do
     reserved "begin"
     seq <- many cmd
     reserved "end"
-    reservedOp ";"
+    semi
     return $ Seq seq
   <?> "command"
 
@@ -130,20 +131,21 @@ data Expr = Const Int
   | Div Expr Expr
   deriving Show
 
-expr = buildExpressionParser operators term where
-  operators = [
-      [ op "*" Mult, op "/" Div ],
-      [ op "+" Add, op "-" Sub ]
-    ]
-  op name fun =
-    Infix ( do { reservedOp name; return fun } ) AssocLeft
+expr = 
+  buildExpressionParser operators term where
+    operators = [
+        [ op "*" Mult, op "/" Div ],
+        [ op "+" Add, op "-" Sub ]
+      ]
+    op name fun =
+      Infix ( do { reservedOp name; return fun } ) AssocLeft
 
 term = do
     i <- integer
     return $ Const $ fromInteger i
   <|> do
     s <- stringConst
-    return $ SConst s
+    return $ SConst  s
   <|> do
     v <- identifier
     return $ Var v
@@ -191,8 +193,6 @@ evaluate ts (Add e1 e2) = (evaluate ts e1) + (evaluate ts e2)
 evaluate ts (Sub e1 e2) = (evaluate ts e1) - (evaluate ts e2)
 evaluate ts (Mult e1 e2) = (evaluate ts e1) * (evaluate ts e2)
 
-
-
 decide :: SymbolTable -> BoolExpr -> Bool
 decide ts (Equal a b) = evaluate ts a == evaluate ts b
 decide ts (NotEqual a b) = evaluate ts a /= evaluate ts b
@@ -217,6 +217,10 @@ interpret ts (Program (c:cs)) = do
 interpret ts (Empty) = return ts
 
 interpret ts (Assign v e) = return $ set ts v $ evaluate ts e
+
+interpret ts (Writeln (SConst s)) = do
+  putStrLn $ show $ s
+  return ts
 
 interpret ts (Writeln e) = do
   putStrLn $ show $ evaluate ts e
