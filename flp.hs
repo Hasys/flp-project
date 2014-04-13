@@ -23,7 +23,7 @@ aelDef = emptyDef
   , identLetter    = alphaNum <|> char '_'
   , opStart        = oneOf "'=+*-"
   , opLetter       = opStart aelDef
-  , reservedOpNames= [ ":=", "=", "+", "*", "-", "/", "<>", "(", ")", ".", ":", "\'" ]
+  , reservedOpNames= [ ":=", "=", "+", "*", "-", "/", "<>", ">", "<", ">=", "<=", "(", ")", ".", ":", "\'" ]
   , reservedNames  = [ "writeln", "readln", "while", "do", "if", "then", "else", "begin", "end",
                        "div", "double", "integer", "string", "var", "function" ]
   , caseSensitive  = True
@@ -176,7 +176,11 @@ term = do
   <?> "term"
 
 data BoolExpr = Equal Expr Expr
-  | NotEqual Expr Expr 
+  | NotEqual Expr Expr
+  | Less Expr Expr
+  | More Expr Expr
+  | LessEqual Expr Expr
+  | MoreEqual Expr Expr
   deriving Show
 
 boolExpr = do
@@ -188,6 +192,10 @@ boolExpr = do
   where
     relOp = ro' "=" Equal
       <|> ro' "<>" NotEqual
+      <|> ro' "<" Less
+      <|> ro' ">" More
+      <|> ro' "<=" LessEqual
+      <|> ro' ">=" MoreEqual
       <?> "relational operator"
     ro' name fun = do
       reservedOp name
@@ -219,6 +227,10 @@ evaluate ts (Mult e1 e2) = (evaluate ts e1) * (evaluate ts e2)
 decide :: SymbolTable -> BoolExpr -> Bool
 decide ts (Equal a b) = evaluate ts a == evaluate ts b
 decide ts (NotEqual a b) = evaluate ts a /= evaluate ts b
+decide ts (Less a b) = evaluate ts a < evaluate ts b
+decide ts (More a b) = evaluate ts a > evaluate ts b
+decide ts (LessEqual a b) = evaluate ts a <= evaluate ts b
+decide ts (MoreEqual a b) = evaluate ts a >= evaluate ts b
 
 startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
 startInterpret ts cs = do
