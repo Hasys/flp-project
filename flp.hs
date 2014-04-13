@@ -66,12 +66,16 @@ data Command = Empty
   | Vars
   | Function
   | Main [ Command ]
+  | Assoc String
   deriving Show
+
+
 
 sections = do
     reserved "var"
+    gVars <- globalVarParser
     semi
-    return $ Empty
+    return $ gVars
   <|> do 
     reserved "begin"
     program <- mcmd_parser
@@ -96,7 +100,25 @@ mcmd_parser =
     return $ Empty
 
   <?> "ERR: multiple command block in main scope"
-  
+globalVarParser = 
+  do
+    x <- oneVar
+    xs <- many otherVars
+    return $ Seq (x:xs)
+
+oneVar = 
+  do
+    i <- identifier
+    reservedOp ":"
+    reserved "integer"
+    return $ Assoc i
+
+otherVars = 
+  do
+    reservedOp ","
+    oneVar
+
+
 mcmd = do
   semi
   cmd
@@ -154,6 +176,8 @@ data Expr = Const Integer
   | Mult Expr Expr
   | Div Expr Expr
   deriving Show
+
+
 
 expr = 
   buildExpressionParser operators term where
@@ -257,6 +281,7 @@ interpret ts (Program c) = do
 interpret ts (Empty) = return ts
 
 interpret ts (Assign v e) = return $ set ts v $ evaluate ts e
+interpret ts (Assoc v) = return $ set ts v $ evaluate ts $ Const $ toInteger 0
 
 interpret ts (Writeln (SConst s)) = do
   putStrLn s

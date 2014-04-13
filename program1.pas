@@ -1,6 +1,6 @@
 { Program 1: Vypocet faktorialu }
-{ globalni promenne 
-var a : integer, vysl : integer;}
+{ globalni promenne }
+var a : integer, vysl : integer;
 begin
 	writeln('Zadejte cislo pro vypocet faktorialu: ');
 	readln(a);
