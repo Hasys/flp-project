@@ -145,7 +145,7 @@ cmd = do
     return $ While b c
   <?> "command"
 
-data Expr = Const Int
+data Expr = Const Integer
   | SConst String
   | Var String
   | Add Expr Expr
@@ -201,23 +201,23 @@ boolExpr = do
       reservedOp name
       return fun
 
-type SymbolTable = [(String, Int)]
+type SymbolTable = [(String, Integer)]
 
-set :: SymbolTable -> String -> Int -> SymbolTable
+set :: SymbolTable -> String -> Integer -> SymbolTable
 set [] var val = [(var, val)]
 set (s@(v,_):ss) var val =
   if v == var
     then (var, val):ss
     else s : set ss var val
 
-get :: SymbolTable -> String -> Int   
+get :: SymbolTable -> String -> Integer
 get [] _ = error "Not found"
 get (s@(var, val):ss) v =
   if v == var
     then val
     else get ss v
 
-evaluate :: SymbolTable -> Expr -> Int
+evaluate :: SymbolTable -> Expr -> Integer
 evaluate ts (Const i) = i
 evaluate ts (Var v) = get ts v
 evaluate ts (Add e1 e2) = (evaluate ts e1) + (evaluate ts e2)
@@ -266,7 +266,7 @@ interpret ts (Writeln e) = do
   return ts
 
 interpret ts (Readln v) = do
-  i <- readLn :: IO Int
+  i <- readLn :: IO Integer
   return $ set ts v i
 
 interpret ts (If cond c1 c2) = do
