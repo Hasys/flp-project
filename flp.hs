@@ -1,5 +1,3 @@
--- (c) 2011 Stanislav Zidek
-
 module Main( main ) where
 
 import System.Environment( getArgs )
@@ -63,12 +61,10 @@ data Command = Empty
   | Seq [ Command ]
   | If BoolExpr Command Command
   | While BoolExpr Command 
-  | Program [ Command ]
+  | Program Command
   | Vars
   | Function
-  deriving Show
-
-data Section = Main [ Command ]
+  | Main [ Command ]
   deriving Show
 
 sections = do
@@ -77,7 +73,7 @@ sections = do
     return $ Empty
   <|> do 
     reserved "begin"
-    program <- many cmd
+    program <- mcmd_parser
     reserved "end"
     reservedOp "."
     return $ Program program
@@ -90,47 +86,63 @@ sections = do
     return $ Empty
   <?> "sections"
 
+mcmd_parser = 
+  do
+    x  <- cmd
+    xs <- many mcmd
+    return $ Seq (x:xs)
+    <|> do           
+    return $ Empty
+
+  <?> "ERR: multiple command block in main scope"
+  
+mcmd = do
+  semi
+  cmd
+
+multipleCmd = 
+  do
+    reserved "begin"
+    seq <- mcmd_parser
+    reserved "end"  
+    return seq
+  <|> do
+    c <- cmd
+    return c
+  <?> "ERR: multiple command"
+
 cmd = do
     semi
     return Empty
   <|> do
     reserved "writeln"
     e <- parens expr
-    semi
     return $ Writeln e
   <|> do
     reserved "readln"
     reservedOp "("
     i <- identifier
     reservedOp ")"
-    semi
     return $ Readln i
   <|> do
     i <- identifier
     reservedOp ":="
     e <- expr
-    semi
     return $ Assign i e
   <|> do
     reserved "if"
     b <- boolExpr
     reserved "then"
-    c1 <- cmd
+    c1 <- multipleCmd
     reserved "else"
-    c2 <- cmd
+    c2 <- multipleCmd
     return $ If b c1 c2
   <|> do
     reserved "while"
     b <- boolExpr
     reserved "do"
-    c <- cmd
+    c <- multipleCmd
     return $ While b c
-  <|> do
-    reserved "begin"
-    seq <- many cmd
-    reserved "end"
-    semi
-    return $ Seq seq
   <?> "command"
 
 data Expr = Const Int
@@ -209,28 +221,32 @@ decide ts (Equal a b) = evaluate ts a == evaluate ts b
 decide ts (NotEqual a b) = evaluate ts a /= evaluate ts b
 
 startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
-startInterpret ts (c:cs) = do
-  ts' <- interpret ts c
-  interpret ts' $ Program cs
+startInterpret ts cs = do
+  --ts' <- interpret ts c
+  interpret ts $ Main cs
 --startInterpret ts [] = return ts
 
 
 interpret :: SymbolTable -> Command -> IO SymbolTable
 interpret ts (Vars) = return ts
 
+interpret ts (Main []) = return ts
+interpret ts (Main (c:cs)) = do
+  ts' <- interpret ts c
+  interpret ts' $ Main cs
+
+
 interpret ts (Function) = return ts
 
-interpret ts (Program []) = return ts
-interpret ts (Program (c:cs)) = do  
-  ts' <- interpret ts c
-  interpret ts' $ Program cs
+interpret ts (Program c) = do  
+  interpret ts c
 
 interpret ts (Empty) = return ts
 
 interpret ts (Assign v e) = return $ set ts v $ evaluate ts e
 
 interpret ts (Writeln (SConst s)) = do
-  putStrLn $ show $ s
+  putStrLn s
   return ts
 
 interpret ts (Writeln e) = do
@@ -273,5 +289,3 @@ main = do
       input <- readFile fileName
       let ast = parseAep input fileName
       startInterpret [] ast 
-
---end demo.hs
