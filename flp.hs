@@ -37,6 +37,7 @@ mystringliteral = lexeme $ do
 
 lexer = (P.makeTokenParser aelDef) {P.stringLiteral = mystringliteral}
 lexeme = P.lexeme lexer
+
 whiteSpace= P.whiteSpace lexer
 integer   = P.integer lexer
 parens    = P.parens lexer
@@ -47,64 +48,36 @@ reservedOp= P.reservedOp lexer
 stringConst = P.stringLiteral lexer
 
 
-
+-- Top-level parser (MAIN)
 aep = do
   whiteSpace
-  ast <- many sections
+  globalVariables <- globalVarParser
+  functions <- many functionDefinitionParser
+  mainBlock <- mainProgramBlockParser
   eof
-  return ast
-  <?> "aep"
+  return $ Seq ([globalVariables] ++ functions ++ [mainBlock])
+  <?> "ERROR: highest level parsing error"
 
-data Command = Empty
-  | Assign String Expr
-  | Writeln Expr
-  | Readln String
-  | Seq [ Command ]
-  | If BoolExpr Command Command
-  | While BoolExpr Command 
-  | Program Command
-  | Vars
-  | Function
-  | Main [ Command ]
-  | Assoc String
-  deriving Show
-
-
-
-sections = do
-    reserved "var"
-    gVars <- globalVarParser
-    semi
-    return $ gVars
-  <|> do 
+mainProgramBlockParser =
+  do
     reserved "begin"
     program <- mcmd_parser
     reserved "end"
     reservedOp "."
     return $ Program program
-  <|> do
-    reserved "function"
-    reservedOp "("
-    reservedOp ")"
-    reservedOp ":"
-    semi
-    return $ Empty
-  <?> "sections"
+  <?> "ERROR: parsing main bock error"
 
-mcmd_parser = 
-  do
-    x  <- cmd
-    xs <- many mcmd
-    return $ Seq (x:xs)
-    <|> do           
-    return $ Empty
-
-  <?> "ERR: multiple command block in main scope"
+-- Parsing global variables section
 globalVarParser = 
   do
+    reserved "var"
     x <- oneVar
     xs <- many otherVars
+    semi
     return $ Seq (x:xs)
+  <|> do
+    return Empty
+  <?> "ERROR: declaration of global variables error"
 
 oneVar = 
   do
@@ -118,6 +91,95 @@ otherVars =
     reservedOp ","
     oneVar
 
+-- PARSING FUNCTIONS
+
+-- Parsing function declaration --
+functionDeclarationParser =
+  do
+    reserved "function"
+    id <- identifier
+    reservedOp "("
+    fp <- functionParameters
+    reservedOp ")"
+    whiteSpace
+    reservedOp ":"
+    rt <- returnType id
+    semi   
+    funDef id fp t
+  <?> "ERROR: function declaration parsing error"
+
+-- Function parameters in function declaration
+functionParameters = 
+  do  
+    x  <- oneFunctionParameter
+    xs <- many multipleFunctionParameters
+    return $ (x:xs)
+  <|> do                 
+    return [] 
+  <?> "ERROR: Parameters in fucntion definition error"
+
+oneFunctionParameter =
+  do
+    id <- identifier
+    reservedOp ":"
+    vt <- variableType i -- VARIABLE TYPE??
+    return vt
+    
+multipleFunctionParameters = 
+  do
+    reservedOp ","
+    oneFunctionParameter
+
+-- Parsing function definition --
+functionDefinitionParser id fp rt = 
+  do
+    lv <- localVariables
+    mc <- multipleCmd
+    return $ Function id fp (Seq [mc]) (fp ++ lv ++ [rt]) rt
+  <|> do
+    return $ Function id fp (snd rt)
+  <?> "ERROR: function definition parsing error"
+
+-- Local variables in function definition
+localVariables =
+  do
+    reserved "var"   
+    x  <- oneLocalVariable
+    xs <- many multipleLocalVariables
+    semi
+    return $ (x:xs)
+  <|> do
+    return []
+  <?> "ERROR: function definition (local variables)"
+     
+oneLocalVariable =
+  do
+    i <- identifier
+    reservedOp ":"
+    var_type i  
+    
+-- dalsi promenne oddelene carkou
+multipleLocalVariables = 
+  do
+    reservedOp ","
+    oneLocalVariable
+--
+--
+--
+--
+--
+--
+
+-- Parsing commands
+mcmd_parser = 
+  do
+    x  <- cmd
+    xs <- many mcmd
+    return $ Seq (x:xs)
+    <|> do           
+    return $ Empty
+
+  <?> "ERROR: many commands error"
 
 mcmd = do
   semi
@@ -132,7 +194,7 @@ multipleCmd =
   <|> do
     c <- cmd
     return c
-  <?> "ERR: multiple command"
+  <?> "ERROR: many commands"
 
 cmd = do
     semi
@@ -168,6 +230,21 @@ cmd = do
     return $ While b c
   <?> "command"
 
+-- Data structures
+data Command = Empty
+  | Assign String Expr
+  | Writeln Expr
+  | Readln String
+  | Seq [ Command ]
+  | If BoolExpr Command Command
+  | While BoolExpr Command 
+  | Program Command
+  | Vars
+  | Function
+  | Main [ Command ]
+  | Assoc String
+  deriving Show
+
 data Expr = Const Integer
   | SConst String
   | Var String
@@ -177,7 +254,13 @@ data Expr = Const Integer
   | Div Expr Expr
   deriving Show
 
-
+data BoolExpr = Equal Expr Expr
+  | NotEqual Expr Expr
+  | Less Expr Expr
+  | More Expr Expr
+  | LessEqual Expr Expr
+  | MoreEqual Expr Expr
+  deriving Show
 
 expr = 
   buildExpressionParser operators term where
@@ -200,14 +283,6 @@ term = do
   <|> parens expr
   <?> "term"
 
-data BoolExpr = Equal Expr Expr
-  | NotEqual Expr Expr
-  | Less Expr Expr
-  | More Expr Expr
-  | LessEqual Expr Expr
-  | MoreEqual Expr Expr
-  deriving Show
-
 boolExpr = do
     e1 <- expr
     o <- relOp
@@ -228,6 +303,7 @@ boolExpr = do
 
 type SymbolTable = [(String, Integer)]
 
+-- Setting values to symbols table
 set :: SymbolTable -> String -> Integer -> SymbolTable
 set [] var val = [(var, val)]
 set (s@(v,_):ss) var val =
@@ -235,6 +311,7 @@ set (s@(v,_):ss) var val =
     then (var, val):ss
     else s : set ss var val
 
+-- Getting values from symbols table
 get :: SymbolTable -> String -> Integer
 get [] _ = error "Not found"
 get (s@(var, val):ss) v =
@@ -242,6 +319,7 @@ get (s@(var, val):ss) v =
     then val
     else get ss v
 
+-- Evaluating expressions
 evaluate :: SymbolTable -> Expr -> Integer
 evaluate ts (Const i) = i
 evaluate ts (Var v) = get ts v
@@ -249,6 +327,7 @@ evaluate ts (Add e1 e2) = (evaluate ts e1) + (evaluate ts e2)
 evaluate ts (Sub e1 e2) = (evaluate ts e1) - (evaluate ts e2)
 evaluate ts (Mult e1 e2) = (evaluate ts e1) * (evaluate ts e2)
 
+-- Evaluating bool expressions
 decide :: SymbolTable -> BoolExpr -> Bool
 decide ts (Equal a b) = evaluate ts a == evaluate ts b
 decide ts (NotEqual a b) = evaluate ts a /= evaluate ts b
@@ -259,22 +338,23 @@ decide ts (MoreEqual a b) = evaluate ts a >= evaluate ts b
 
 startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
 startInterpret ts cs = do
-  --ts' <- interpret ts c
   interpret ts $ Main cs
---startInterpret ts [] = return ts
 
-
+-- Interpreter
 interpret :: SymbolTable -> Command -> IO SymbolTable
 interpret ts (Vars) = return ts
 
+
+-- Main block interpreter
 interpret ts (Main []) = return ts
 interpret ts (Main (c:cs)) = do
   ts' <- interpret ts c
   interpret ts' $ Main cs
 
-
+-- Fucntion interpreter
 interpret ts (Function) = return ts
 
+-- All program interpreter
 interpret ts (Program c) = do  
   interpret ts c
 
