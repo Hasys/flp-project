@@ -52,10 +52,10 @@ stringConst = P.stringLiteral lexer
 aep = do
   whiteSpace
   globalVariables <- globalVarParser
-  functions <- many functionDefinitionParser
+  functions <- many functionDeclarationParser
   mainBlock <- mainProgramBlockParser
   eof
-  return $ Seq ([globalVariables] ++ functions ++ [mainBlock])
+  return $ [globalVariables] ++ functions ++ [mainBlock]
   <?> "ERROR: highest level parsing error"
 
 mainProgramBlockParser =
@@ -103,9 +103,21 @@ functionDeclarationParser =
     reservedOp ")"
     whiteSpace
     reservedOp ":"
-    rt <- returnType id
-    semi   
-    funDef id fp t
+    reserved "integer"
+    semi
+    functionDefinitionParser id fp
+
+  <|> do
+    reserved "function"
+    id <- identifier
+    reservedOp "("
+    fp <- functionParameters
+    reservedOp ")"
+    whiteSpace
+    reservedOp ":"
+    reserved "integer"
+    semi 
+    return $ FuncDeclare
   <?> "ERROR: function declaration parsing error"
 
 -- Function parameters in function declaration
@@ -122,8 +134,8 @@ oneFunctionParameter =
   do
     id <- identifier
     reservedOp ":"
-    vt <- variableType i -- VARIABLE TYPE??
-    return vt
+    reserved "integer"
+    return Empty
     
 multipleFunctionParameters = 
   do
@@ -131,13 +143,13 @@ multipleFunctionParameters =
     oneFunctionParameter
 
 -- Parsing function definition --
-functionDefinitionParser id fp rt = 
+functionDefinitionParser id fp  = 
   do
     lv <- localVariables
     mc <- multipleCmd
-    return $ Function id fp (Seq [mc]) (fp ++ lv ++ [rt]) rt
+    return $ Function 
   <|> do
-    return $ Function id fp (snd rt)
+    return $ Function 
   <?> "ERROR: function definition parsing error"
 
 -- Local variables in function definition
@@ -156,13 +168,15 @@ oneLocalVariable =
   do
     i <- identifier
     reservedOp ":"
-    var_type i  
+    reserved "integer"
     
 -- dalsi promenne oddelene carkou
 multipleLocalVariables = 
   do
     reservedOp ","
     oneLocalVariable
+
+
 --
 --
 --
@@ -241,6 +255,7 @@ data Command = Empty
   | Program Command
   | Vars
   | Function
+  | FuncDeclare
   | Main [ Command ]
   | Assoc String
   deriving Show
@@ -359,6 +374,7 @@ interpret ts (Program c) = do
   interpret ts c
 
 interpret ts (Empty) = return ts
+interpret ts (FuncDeclare) = return ts
 
 interpret ts (Assign v e) = return $ set ts v $ evaluate ts e
 interpret ts (Assoc v) = return $ set ts v $ evaluate ts $ Const $ toInteger 0
