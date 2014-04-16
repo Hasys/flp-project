@@ -84,7 +84,7 @@ oneVar =
     i <- identifier
     reservedOp ":"
     reserved "integer"
-    return $ Assoc i
+    return $ Assign i $ Const $ IntegerValue 0
 
 otherVars = 
   do
@@ -117,7 +117,7 @@ functionDeclarationParser =
     reservedOp ":"
     reserved "integer"
     semi 
-    return $ FuncDeclare
+    return $ FuncDeclare id fp
   <?> "ERROR: function declaration parsing error"
 
 -- Function parameters in function declaration
@@ -135,7 +135,7 @@ oneFunctionParameter =
     id <- identifier
     reservedOp ":"
     reserved "integer"
-    return Empty
+    return $ Assign id $ Const $ IntegerValue 0
     
 multipleFunctionParameters = 
   do
@@ -255,12 +255,12 @@ data Command = Empty
   | Program Command
   | Vars
   | Function
-  | FuncDeclare
+  | FuncDeclare String [ Command ]
   | Main [ Command ]
   | Assoc String
   deriving Show
 
-data Expr = Const Integer
+data Expr = Const Value
   | SConst String
   | Var String
   | Add Expr Expr
@@ -288,7 +288,7 @@ expr =
 
 term = do
     i <- integer
-    return $ Const $ fromInteger i
+    return $ Const $ IntegerValue $ fromInteger i
   <|> do
     s <- mystringliteral
     return $ SConst s
@@ -316,10 +316,26 @@ boolExpr = do
       reservedOp name
       return fun
 
-type SymbolTable = [(String, Integer)]
+type SymbolTable = [(String, Value)]
+type Variable = (String, Value)
+data Value = IntegerValue { intVal :: Integer }
+            | FunctionValue  {
+                              ident :: String,
+                              params :: [Command],
+                              scope :: Command,
+                              lts :: SymbolTable
+                            }
+            | StringValue { strVal :: String }
+            | Undeclared
+            deriving Show
+
+getType :: Value -> String
+getType val = case val of 
+                FunctionValue w x y z -> "function"
+                Undeclared -> "undeclared"
 
 -- Setting values to symbols table
-set :: SymbolTable -> String -> Integer -> SymbolTable
+set :: SymbolTable -> String -> Value -> SymbolTable
 set [] var val = [(var, val)]
 set (s@(v,_):ss) var val =
   if v == var
@@ -327,7 +343,7 @@ set (s@(v,_):ss) var val =
     else s : set ss var val
 
 -- Getting values from symbols table
-get :: SymbolTable -> String -> Integer
+get :: SymbolTable -> String -> Value
 get [] _ = error "Not found"
 get (s@(var, val):ss) v =
   if v == var
@@ -335,21 +351,53 @@ get (s@(var, val):ss) v =
     else get ss v
 
 -- Evaluating expressions
-evaluate :: SymbolTable -> Expr -> Integer
+evaluate :: SymbolTable -> Expr -> Value
 evaluate ts (Const i) = i
 evaluate ts (Var v) = get ts v
-evaluate ts (Add e1 e2) = (evaluate ts e1) + (evaluate ts e2)
-evaluate ts (Sub e1 e2) = (evaluate ts e1) - (evaluate ts e2)
-evaluate ts (Mult e1 e2) = (evaluate ts e1) * (evaluate ts e2)
+evaluate ts (Add e1 e2) = addValues (evaluate ts e1) (evaluate ts e2)
+evaluate ts (Sub e1 e2) = subValues (evaluate ts e1) (evaluate ts e2)
+
+
+evaluate ts (Mult e1 e2) = multValues (evaluate ts e1) (evaluate ts e2)
 
 -- Evaluating bool expressions
 decide :: SymbolTable -> BoolExpr -> Bool
-decide ts (Equal a b) = evaluate ts a == evaluate ts b
-decide ts (NotEqual a b) = evaluate ts a /= evaluate ts b
-decide ts (Less a b) = evaluate ts a < evaluate ts b
-decide ts (More a b) = evaluate ts a > evaluate ts b
-decide ts (LessEqual a b) = evaluate ts a <= evaluate ts b
-decide ts (MoreEqual a b) = evaluate ts a >= evaluate ts b
+decide ts (Equal a b) = areEqual (evaluate ts a) (evaluate ts b)
+decide ts (NotEqual a b) = areNotEqual (evaluate ts a) (evaluate ts b)
+decide ts (Less a b) = isLess (evaluate ts a) (evaluate ts b)
+decide ts (More a b) = isMore (evaluate ts a) (evaluate ts b)
+decide ts (LessEqual a b) = isLessEqual (evaluate ts a) (evaluate ts b)
+decide ts (MoreEqual a b) = isMoreEqual (evaluate ts a) (evaluate ts b)
+
+addValues :: Value -> Value -> Value
+addValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 + val2)
+--addValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 + val2)
+--addValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 + fromIntegral val2)
+--addValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 + val2)
+
+subValues :: Value -> Value -> Value
+subValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 - val2)
+
+multValues :: Value -> Value -> Value
+multValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 * val2)
+
+areEqual :: Value -> Value -> Bool
+areEqual (IntegerValue a) (IntegerValue b) = a == b
+
+areNotEqual :: Value -> Value -> Bool
+areNotEqual (IntegerValue a) (IntegerValue b) = a /= b
+
+isLess :: Value -> Value -> Bool
+isLess (IntegerValue a) (IntegerValue b) = a < b
+
+isMore :: Value -> Value -> Bool
+isMore (IntegerValue a) (IntegerValue b) = a > b
+
+isLessEqual :: Value -> Value -> Bool
+isLessEqual (IntegerValue a) (IntegerValue b) = a <= b
+
+isMoreEqual :: Value -> Value -> Bool
+isMoreEqual (IntegerValue a) (IntegerValue b) = a >= b
 
 startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
 startInterpret ts cs = do
@@ -368,16 +416,22 @@ interpret ts (Main (c:cs)) = do
 
 -- Fucntion interpreter
 interpret ts (Function) = return ts
+interpret ts (FuncDeclare id p) = do
+  var <- return $ get ts id
+  if (getType var) == "undeclared"
+    then do
+      let func = FunctionValue { ident=id, params=p, scope=Empty, lts=[] }
+      return $ set ts id func
+    else error "Multiple function declaration"
+  return ts
 
 -- All program interpreter
 interpret ts (Program c) = do  
   interpret ts c
 
 interpret ts (Empty) = return ts
-interpret ts (FuncDeclare) = return ts
 
 interpret ts (Assign v e) = return $ set ts v $ evaluate ts e
-interpret ts (Assoc v) = return $ set ts v $ evaluate ts $ Const $ toInteger 0
 
 interpret ts (Writeln (SConst s)) = do
   putStrLn s
@@ -389,7 +443,7 @@ interpret ts (Writeln e) = do
 
 interpret ts (Readln v) = do
   i <- readLn :: IO Integer
-  return $ set ts v i
+  return $ set ts v $ IntegerValue i
 
 interpret ts (If cond c1 c2) = do
   if decide ts cond
