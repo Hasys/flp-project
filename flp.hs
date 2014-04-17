@@ -327,7 +327,10 @@ data Value = IntegerValue { intVal :: Integer }
                             }
             | StringValue { strVal :: String }
             | Undeclared
-            deriving Show
+
+instance Show Value where
+  show (IntegerValue int) = show int
+  show (StringValue str) = show str
 
 getType :: Value -> String
 getType val = case val of 
