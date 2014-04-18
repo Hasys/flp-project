@@ -1,20 +1,16 @@
---Loading nessesary libraries.
-module Main( main ) where
+-- FLP projekt (FLP_2014_Pascal) --
+-- Sergii Khunovych xkhuno00     --
+-- Kirill Gaevskii xgaevs01      --
+-- Maksym Boychuk xboych00       --
 
+module Main( main ) where
 import System.Environment( getArgs )
 import System.IO
-
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
 import Text.ParserCombinators.Parsec.Char
-
-escapeOrStringChar :: Parser Char
-escapeOrStringChar = try (string "''" >> return '\'') 
-					<|> do 
-            c <- noneOf "'"
-            return $ c
 
 aelDef = emptyDef
   { commentStart   = "{"
@@ -24,29 +20,28 @@ aelDef = emptyDef
   , identLetter    = alphaNum <|> char '_'
   , opStart        = oneOf "'=+*-"
   , opLetter       = opStart aelDef
-  , reservedOpNames= [ ":=", "=", "+", "*", "-", "/", "<>", ">", "<", ">=", "<=", "(", ")", ".", ":", "\'" ]
+  , reservedOpNames= [ ":=", "=", "+", "*", "-", "div", "<>", ">", "<", ">=", "<=", "(", ")", ".", ":", "\'" ]
   , reservedNames  = [ "writeln", "readln", "while", "do", "if", "then", "else", "begin", "end",
                        "div", "double", "integer", "string", "var", "function" ]
   , caseSensitive  = True
   }
 
+lexer = (P.makeTokenParser aelDef) {P.stringLiteral = mystringliteral}
+
+-- Re-defining string literal
 mystringliteral = lexeme $ do   
     str <- between (char '\'') (char '\'' <?> "end of string") (many escapeOrStringChar)
-    return str      
-					  
+    return str    
 
-lexer = (P.makeTokenParser aelDef) {P.stringLiteral = mystringliteral}
-lexeme = P.lexeme lexer
-
-whiteSpace= P.whiteSpace lexer
-integer   = P.integer lexer
-parens    = P.parens lexer
-semi      = P.semi lexer
-identifier= P.identifier lexer
-reserved  = P.reserved lexer
-reservedOp= P.reservedOp lexer
+lexeme      = P.lexeme lexer
+whiteSpace  = P.whiteSpace lexer
+integer     = P.integer lexer
+parens      = P.parens lexer
+semi        = P.semi lexer
+identifier  = P.identifier lexer
+reserved    = P.reserved lexer
+reservedOp  = P.reservedOp lexer
 stringConst = P.stringLiteral lexer
-
 
 -- Top-level parser (MAIN)
 aep = do
@@ -106,7 +101,6 @@ functionDeclarationParser =
     reserved "integer"
     semi
     functionDefinitionParser id fp
-
   <|> do
     reserved "function"
     id <- identifier
@@ -170,34 +164,25 @@ oneLocalVariable =
     reservedOp ":"
     reserved "integer"
     
--- dalsi promenne oddelene carkou
 multipleLocalVariables = 
   do
     reservedOp ","
     oneLocalVariable
 
-
---
---
---
---
---
---
-
--- Parsing commands
 mcmd_parser = 
   do
     x  <- cmd
     xs <- many mcmd
     return $ Seq (x:xs)
-    <|> do           
+  <|> do           
     return $ Empty
 
   <?> "ERROR: many commands error"
 
-mcmd = do
-  semi
-  cmd
+mcmd = 
+  do
+    semi
+    cmd
 
 multipleCmd = 
   do
@@ -210,7 +195,8 @@ multipleCmd =
     return c
   <?> "ERROR: many commands"
 
-cmd = do
+cmd = 
+  do
     semi
     return Empty
   <|> do
@@ -244,49 +230,17 @@ cmd = do
     return $ While b c
   <?> "command"
 
--- Data structures
-data Command = Empty
-  | Assign String Expr
-  | Writeln Expr
-  | Readln String
-  | Seq [ Command ]
-  | If BoolExpr Command Command
-  | While BoolExpr Command 
-  | Program Command
-  | Vars
-  | Function
-  | FuncDeclare String [ Command ]
-  | Main [ Command ]
-  | Assoc String
-  deriving Show
-
-data Expr = Const Value
-  | SConst String
-  | Var String
-  | Add Expr Expr
-  | Sub Expr Expr
-  | Mult Expr Expr
-  | Div Expr Expr
-  deriving Show
-
-data BoolExpr = Equal Expr Expr
-  | NotEqual Expr Expr
-  | Less Expr Expr
-  | More Expr Expr
-  | LessEqual Expr Expr
-  | MoreEqual Expr Expr
-  deriving Show
-
 expr = 
   buildExpressionParser operators term where
     operators = [
-        [ op "*" Mult, op "/" Div ],
+        [ op "*" Mult, op "div" Div ],
         [ op "+" Add, op "-" Sub ]
       ]
     op name fun =
       Infix ( do { reservedOp name; return fun } ) AssocLeft
 
-term = do
+term = 
+  do
     i <- integer
     return $ Const $ IntegerValue $ fromInteger i
   <|> do
@@ -298,35 +252,24 @@ term = do
   <|> parens expr
   <?> "term"
 
-boolExpr = do
+boolExpr = 
+  do
     e1 <- expr
-    o <- relOp
+    o <- relationOp
     e2 <- expr
     return $ o e1 e2
   <?> "boolean expression"
   where
-    relOp = ro' "=" Equal
-      <|> ro' "<>" NotEqual
-      <|> ro' "<" Less
-      <|> ro' ">" More
-      <|> ro' "<=" LessEqual
-      <|> ro' ">=" MoreEqual
+    relationOp = relationOp' "=" Equal
+      <|> relationOp' "<>" NotEqual
+      <|> relationOp' "<" Less
+      <|> relationOp' ">" More
+      <|> relationOp' "<=" LessEqual
+      <|> relationOp' ">=" MoreEqual
       <?> "relational operator"
-    ro' name fun = do
+    relationOp' name funOp = do
       reservedOp name
-      return fun
-
-type SymbolTable = [(String, Value)]
-type Variable = (String, Value)
-data Value = IntegerValue { intVal :: Integer }
-            | FunctionValue  {
-                              ident :: String,
-                              params :: [Command],
-                              scope :: Command,
-                              lts :: SymbolTable
-                            }
-            | StringValue { strVal :: String }
-            | Undeclared
+      return funOp
 
 instance Show Value where
   show (IntegerValue int) = show int
@@ -353,20 +296,26 @@ get (s@(var, val):ss) v =
     then val
     else get ss v
 
+-- Checking for quotes inside string
+escapeOrStringChar :: Parser Char
+escapeOrStringChar = try (string "''" >> return '\'') 
+          <|> do 
+            c <- noneOf "'"
+            return $ c
+
 -- Evaluating expressions
 evaluate :: SymbolTable -> Expr -> Value
 evaluate ts (Const i) = i
 evaluate ts (Var v) = get ts v
 evaluate ts (Add e1 e2) = addValues (evaluate ts e1) (evaluate ts e2)
 evaluate ts (Sub e1 e2) = subValues (evaluate ts e1) (evaluate ts e2)
-
-
 evaluate ts (Mult e1 e2) = multValues (evaluate ts e1) (evaluate ts e2)
+evaluate ts (Div e1 e2) = divValues (evaluate ts e1) (evaluate ts e2)
 
 -- Evaluating bool expressions
 decide :: SymbolTable -> BoolExpr -> Bool
-decide ts (Equal a b) = areEqual (evaluate ts a) (evaluate ts b)
-decide ts (NotEqual a b) = areNotEqual (evaluate ts a) (evaluate ts b)
+decide ts (Equal a b) = isEqual (evaluate ts a) (evaluate ts b)
+decide ts (NotEqual a b) = isNotEqual (evaluate ts a) (evaluate ts b)
 decide ts (Less a b) = isLess (evaluate ts a) (evaluate ts b)
 decide ts (More a b) = isMore (evaluate ts a) (evaluate ts b)
 decide ts (LessEqual a b) = isLessEqual (evaluate ts a) (evaluate ts b)
@@ -374,33 +323,67 @@ decide ts (MoreEqual a b) = isMoreEqual (evaluate ts a) (evaluate ts b)
 
 addValues :: Value -> Value -> Value
 addValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 + val2)
---addValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 + val2)
---addValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 + fromIntegral val2)
---addValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 + val2)
+addValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 + val2)
+addValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 + fromIntegral val2)
+addValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 + val2)
+addValues (StringValue val1) (StringValue val2) = StringValue (val1 ++ val2)
 
 subValues :: Value -> Value -> Value
 subValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 - val2)
+subValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 - val2)
+subValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 - fromIntegral val2)
+subValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 - val2)
 
 multValues :: Value -> Value -> Value
 multValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 * val2)
+multValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 * val2)
+multValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 * fromIntegral val2)
+multValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 * val2)
 
-areEqual :: Value -> Value -> Bool
-areEqual (IntegerValue a) (IntegerValue b) = a == b
+divValues :: Value -> Value -> Value
+divValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (div val1 val2)
 
-areNotEqual :: Value -> Value -> Bool
-areNotEqual (IntegerValue a) (IntegerValue b) = a /= b
+isEqual :: Value -> Value -> Bool
+isEqual (IntegerValue val1) (IntegerValue val2) = val1 == val2
+isEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) == val2
+isEqual (DoubleValue val1) (DoubleValue val2) = val1 == val2
+isEqual (DoubleValue val1) (IntegerValue val2) = val1 == (fromIntegral val2)
+isEqual (StringValue val1) (StringValue val2) = val1 == val2
+
+isNotEqual :: Value -> Value -> Bool
+isNotEqual (IntegerValue val1) (IntegerValue val2) = val1 /= val2
+isNotEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) /= val2
+isNotEqual (DoubleValue val1) (DoubleValue val2) = val1 /= val2
+isNotEqual (DoubleValue val1) (IntegerValue val2) = val1 /= (fromIntegral val2)
+isNotEqual (StringValue val1) (StringValue val2) = val1 /= val2
 
 isLess :: Value -> Value -> Bool
-isLess (IntegerValue a) (IntegerValue b) = a < b
+isLess (IntegerValue val1) (IntegerValue val2) = val1 < val2
+isLess (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) < val2
+isLess (DoubleValue val1) (DoubleValue val2) = val1 < val2
+isLess (DoubleValue val1) (IntegerValue val2) = val1 < (fromIntegral val2)
+isLess (StringValue val1) (StringValue val2) = val1 < val2 
 
 isMore :: Value -> Value -> Bool
-isMore (IntegerValue a) (IntegerValue b) = a > b
+isMore (IntegerValue val1) (IntegerValue val2) = val1 > val2
+isMore (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) > val2
+isMore (DoubleValue val1) (DoubleValue val2) = val1 > val2
+isMore (DoubleValue val1) (IntegerValue val2) = val1 > (fromIntegral val2)
+isMore (StringValue val1) (StringValue val2) = val1 > val2 
 
 isLessEqual :: Value -> Value -> Bool
-isLessEqual (IntegerValue a) (IntegerValue b) = a <= b
+isLessEqual (IntegerValue val1) (IntegerValue val2) = val1 <= val2
+isLessEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) <= val2
+isLessEqual (DoubleValue val1) (DoubleValue val2) = val1 <= val2
+isLessEqual (DoubleValue val1) (IntegerValue val2) = val1 <= (fromIntegral val2)
+isLessEqual (StringValue val1) (StringValue val2) = val1 <= val2 
 
 isMoreEqual :: Value -> Value -> Bool
-isMoreEqual (IntegerValue a) (IntegerValue b) = a >= b
+isMoreEqual (IntegerValue val1) (IntegerValue val2) = val1 >= val2
+isMoreEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) >= val2
+isMoreEqual (DoubleValue val1) (DoubleValue val2) = val1 >= val2
+isMoreEqual (DoubleValue val1) (IntegerValue val2) = val1 >= (fromIntegral val2)
+isMoreEqual (StringValue val1) (StringValue val2) = val1 >= val2 
 
 startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
 startInterpret ts cs = do
@@ -464,6 +447,52 @@ interpret ts (Seq []) = return ts
 interpret ts (Seq (c:cs)) = do
   ts' <- interpret ts c
   interpret ts' $ Seq cs
+
+-- Data structures
+data Command = Empty
+  | Assign String Expr
+  | Writeln Expr
+  | Readln String
+  | Seq [ Command ]
+  | If BoolExpr Command Command
+  | While BoolExpr Command 
+  | Program Command
+  | Vars
+  | Function
+  | FuncDeclare String [ Command ]
+  | Main [ Command ]
+  | Assoc String
+  deriving Show
+
+data Expr = Const Value
+  | SConst String
+  | Var String
+  | Add Expr Expr
+  | Sub Expr Expr
+  | Mult Expr Expr
+  | Div Expr Expr
+  deriving Show
+
+data BoolExpr = Equal Expr Expr
+  | NotEqual Expr Expr
+  | Less Expr Expr
+  | More Expr Expr
+  | LessEqual Expr Expr
+  | MoreEqual Expr Expr
+  deriving Show
+
+type SymbolTable = [(String, Value)]
+type Variable = (String, Value)
+data Value = IntegerValue { intVal :: Integer }
+            | FunctionValue  {
+                              ident :: String,
+                              params :: [Command],
+                              scope :: Command,
+                              lts :: SymbolTable
+                            }
+            | StringValue { strVal :: String }
+            | DoubleValue { doubleVal :: Double}
+            | Undeclared
   
 parseAep input file =
   case parse aep file input of
