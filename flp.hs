@@ -118,7 +118,7 @@ oneFunctionParameter =
     id <- identifier
     reservedOp ":"
     reserved "integer"
-    return $ (id, IntegerValue 0) --Assign id $ Const $ IntegerValue 0
+    return $ (id, IntegerValue 0)
     
 multipleFunctionParameters = 
   do
@@ -236,11 +236,29 @@ term =
   <|> do
     s <- mystringliteral
     return $ SConst s
+  <|> try ( do
+    id <- identifier
+    ex <- parens call_params
+    return $ FunctionCall id ex
+    ) 
   <|> do
     v <- identifier
     return $ Var v
   <|> parens expr
   <?> "term"
+
+call_params = 
+  do
+    x  <- expr 
+    xs <- many expr_seq
+    return $ (x:xs)
+  <|> do
+    return []
+
+expr_seq = 
+  do
+    reservedOp ","
+    expr
 
 boolExpr = 
   do
@@ -301,6 +319,7 @@ evaluate ts (Add e1 e2) = addValues (evaluate ts e1) (evaluate ts e2)
 evaluate ts (Sub e1 e2) = subValues (evaluate ts e1) (evaluate ts e2)
 evaluate ts (Mult e1 e2) = multValues (evaluate ts e1) (evaluate ts e2)
 evaluate ts (Div e1 e2) = divValues (evaluate ts e1) (evaluate ts e2)
+evaluate ts (FunctionCall id e) = (IntegerValue 0)
 
 -- Evaluating bool expressions
 decide :: SymbolTable -> BoolExpr -> Bool
@@ -466,6 +485,7 @@ data Expr = Const Value
   | Add Expr Expr
   | Sub Expr Expr
   | Mult Expr Expr
+  | FunctionCall String [Expr]
   | Div Expr Expr
   deriving Show
 

@@ -9,7 +9,7 @@ function factorial (n : integer) : integer;
 		else
 			begin
 				decremented_n := n - 1;
-				{temp_result := factorial(decremented_n);}
+				temp_result := factorial(decremented_n);
 				result := n * temp_result
 			end;
 		factorial := result
@@ -22,7 +22,7 @@ begin
 		writeln('Faktorial nelze spocitat')
 	else
 		begin
-			{vysl = factorial(a);}
+			vysl := factorial(a);
 			writeln('Vysledek je:');
 			writeln(vysl)
 		end
