@@ -79,7 +79,7 @@ oneVar =
     i <- identifier
     reservedOp ":"
     reserved "integer"
-    return $ Assign i $ Const $ IntegerValue 0
+    return $ GVarDec (i, IntegerValue 0)
 
 otherVars = 
   do
@@ -98,10 +98,22 @@ functionDeclarationParser =
     reservedOp ")"
     whiteSpace
     reservedOp ":"
-    reserved "integer"
+    rType <- returnType id
     semi
-    functionDefinitionParser id fp
+    functionDefinitionParser id fp rType 
   <?> "ERROR: function declaration parsing error"
+
+returnType id =
+  do
+    reserved "integer"
+    return [ (id, RetValue { retVal = (IntegerValue 0) } ) ]
+  <|> do
+    reserved "double"
+    return [ (id, RetValue { retVal = (DoubleValue 0.0) } ) ]
+  <|> do
+    reserved "string"
+    return [ (id, RetValue { retVal = (StringValue "") } ) ]
+  <?> "ERR: bad function return type"  
 
 -- Function parameters in function declaration
 functionParameters = 
@@ -126,13 +138,13 @@ multipleFunctionParameters =
     oneFunctionParameter
 
 -- Parsing function definition --
-functionDefinitionParser id fp  = 
+functionDefinitionParser id fp rType  = 
   do
     lv <- localVariables
     mc <- multipleCmd
-    return $ Function id fp (Seq [mc]) (fp ++ lv)
+    return $ Function id fp (Seq [mc]) (fp ++ lv ++ rType)
   <|> do                 
-    return $ FuncDeclare id fp 
+    return $ FuncDeclare id fp
   <?> "ERROR: function definition parsing error"
 
 -- Local variables in function definition
@@ -281,13 +293,14 @@ boolExpr =
       reservedOp name
       return funOp
 
-instance Show Value where
-  show (IntegerValue int) = show int
-  show (StringValue str) = show str
-
 getType :: Value -> String
 getType val = case val of 
+                IntegerValue x -> "integer"
+                DoubleValue x -> "double"
+                StringValue x -> "string"
                 FunctionValue w x y z -> "function"
+                RetValue x -> "return"
+                GlobalValue x -> "global"
                 Undeclared -> "undeclared"
 
 -- Setting values to symbols table
@@ -314,7 +327,7 @@ escapeOrStringChar = try (string "''" >> return '\'')
             return $ c
 
 -- Evaluating expressions
-evaluate :: SymbolTable -> Expr -> IO Value
+evaluate :: SymbolTable -> Expr -> IO EvalReturn
 evaluate ts (Const i) = return i
 evaluate ts (Var v) = return $ get ts v
 evaluate ts (Add e1 e2) = do
@@ -328,6 +341,9 @@ evaluate ts (Sub e1 e2) = do
 evaluate ts (Mult e1 e2) = do
   ev1 <- evaluate ts e1
   ev2 <- evaluate ts e2
+  print ev1
+  print ev2
+
   return (multValues ev1 ev2)
 evaluate ts (Div e1 e2) = do
   ev1 <- evaluate ts e1
@@ -342,10 +358,72 @@ evaluate ts (FunctionCall id e) = do
   numOfParams <- return $ length fParams
   givenParams <- return $ length gParams
 
-  if numOfParams /= givenParams
+
+  if numOfParams /= (givenParams)
     then do error $ "Different count of  function parameters in function '" ++ id ++ "'"
-  else
-    return $ IntegerValue 2
+    else do
+      vals <- computeGivenParams ts gParams
+
+      lts   <- return $ lts fun
+
+      lts'  <- setParamValues (lts++ts) fParams vals
+
+      let ft = [ x | x <- ts, (getType (snd x)) == "function" ]    
+      let nts = ft ++ lts'
+      nts' <- interpret (nts) fScope
+
+      let rts = [ x | x <- nts', (getType (snd x)) == "return" ]
+
+      let gv = [ x | x <- nts', (getType (snd x)) == "global"]
+
+      ret <- return $ get rts id
+      putStr "gv: "
+      print gv
+      return $ ((retVal ret), gv)
+      --return $ IntegerValue 2
+
+computeGivenParams :: SymbolTable -> [Expr] -> IO [Value]
+computeGivenParams [] [] = return []
+computeGivenParams ts [] = return []
+computeGivenParams ts [x] = do
+  val <- evaluate ts x
+  return [ val ]
+  
+computeGivenParams ts (x:xs) = do
+  val <- evaluate ts x
+  ss <- computeGivenParams ts xs
+  return $ val : ss
+
+setParamValues :: SymbolTable -> [Variable] -> [Value] -> IO SymbolTable
+setParamValues ts [] [] = return ts
+setParamValues ts ((id, value):xs) (y:ys) = do
+  val <- checkTypeAssignment value y
+  ts' <- return $ set ts id val   
+  setParamValues ts' xs ys
+
+checkTypeAssignment :: Value -> Value -> IO Value
+checkTypeAssignment (IntegerValue x) (IntegerValue y) = return $ IntegerValue y 
+checkTypeAssignment (DoubleValue x) (DoubleValue y) = return $ DoubleValue y
+checkTypeAssignment (StringValue x) (StringValue y) = return $ StringValue y 
+checkTypeAssignment (DoubleValue x) (IntegerValue y) = return $ DoubleValue $ fromIntegral y
+     
+checkTypeAssignment r@(RetValue x) y = checkTypeAssignment (retVal r) y
+
+checkTypeAssignment g@(GlobalValue x) h@(GlobalValue y) = checkTypeAssignment g (gVal h)
+
+checkTypeAssignment g@(GlobalValue x) y = do
+  var <- return $ gVal g
+  val <- checkTypeAssignment var y
+  return $ GlobalValue val
+  
+checkTypeAssignment x h@(GlobalValue y) = do 
+  var <- return $ gVal h
+  val <- checkTypeAssignment x var
+  return val
+  
+checkTypeAssignment (IntegerValue x) y = error "Incompatible assignment types"
+checkTypeAssignment (DoubleValue x) y = error "Incompatible assignment types"
+checkTypeAssignment (StringValue x) y = error "Incompatible assignment types"
 
 -- Evaluating bool expressions
 decide :: SymbolTable -> BoolExpr -> IO Bool
@@ -374,18 +452,18 @@ decide ts (MoreEqual a b) = do
   ev2 <- evaluate ts b
   return (isMoreEqual ev1 ev2)
 
-addValues :: Value -> Value -> Value
-addValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 + val2)
-addValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 + val2)
-addValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 + fromIntegral val2)
-addValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 + val2)
-addValues (StringValue val1) (StringValue val2) = StringValue (val1 ++ val2)
+addValues :: Value -> Value -> IO EvalReturn
+addValues (IntegerValue val1) (IntegerValue val2) = do return ( (IntegerValue (val1 + val2)), [] )
+addValues (DoubleValue val1) (DoubleValue val2) =do return ( ( DoubleValue (val1 + val2)), [] )
+addValues (DoubleValue val1) (IntegerValue val2) = do return ( (DoubleValue (val1 + fromIntegral val2)), [] )
+addValues (IntegerValue val1) (DoubleValue val2) = do return ( ( DoubleValue (fromIntegral val1 + val2)), [] )
+addValues (StringValue val1) (StringValue val2) = do return ( (StringValue (val1 ++ val2)), [] )
 
 subValues :: Value -> Value -> Value
-subValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 - val2)
-subValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 - val2)
-subValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 - fromIntegral val2)
-subValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 - val2)
+subValues (IntegerValue val1) (IntegerValue val2) = do return ( (IntegerValue (val1 - val2)), [] )
+subValues (DoubleValue val1) (DoubleValue val2) = do return ( ( DoubleValue (val1 - val2)
+subValues (DoubleValue val1) (IntegerValue val2) = do return ( (DoubleValue (val1 - fromIntegral val2)
+subValues (IntegerValue val1) (DoubleValue val2) = do return ( (DoubleValue (fromIntegral val1 - val2)
 
 multValues :: Value -> Value -> Value
 multValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 * val2)
@@ -445,6 +523,17 @@ startInterpret ts cs = do
 -- Interpreter
 interpret :: SymbolTable -> Command -> IO SymbolTable
 interpret ts (Vars) = return ts
+
+
+interpret ts (GVarDec v) = do
+  name <- return $ fst (v)
+  val <- return $ snd (v)
+  var <- return $ get ts name
+  if (getType var) == "undeclared"
+    then do
+      let g = GlobalValue { gVal = val }
+      return $ set ts name g
+    else error "ERR: Multiple variable declaration"
 
 
 -- Main block interpreter
@@ -514,6 +603,7 @@ interpret ts (Seq (c:cs)) = do
 
 -- Data structures
 data Command = Empty
+  | GVarDec Variable
   | Assign String Expr
   | Writeln Expr
   | Readln String
@@ -547,6 +637,7 @@ data BoolExpr = Equal Expr Expr
   deriving Show
 
 type SymbolTable = [(String, Value)]
+type EvalReturn = (Value, SymbolTable)
 type Variable = (String, Value)
 data Value = IntegerValue { intVal :: Integer }
             | FunctionValue  {
@@ -557,7 +648,15 @@ data Value = IntegerValue { intVal :: Integer }
                             }
             | StringValue { strVal :: String }
             | DoubleValue { doubleVal :: Double}
+            | RetValue { retVal :: Value }
+            | GlobalValue { gVal :: Value }
             | Undeclared
+            deriving Show
+
+--instance Show Value where
+  --show (IntegerValue int) = show int
+  --show (StringValue str) = show str
+  --show (FunctionValue i p s l) = show s
 
 parseAep input file =
   case parse aep file input of

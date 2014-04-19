@@ -4,8 +4,10 @@ function factorial (n : integer) : integer;
 function factorial (n : integer) : integer;
 	var temp_result : integer, decremented_n : integer, result : integer;
 	begin
-		if n < 2 then
-			result := 1
+		if n < 2 then begin
+			result := 1;
+			result := 1 * result
+			end
 		else
 			begin
 				decremented_n := n - 1;
