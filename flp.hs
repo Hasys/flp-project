@@ -238,7 +238,9 @@ term =
     return $ SConst s
   <|> try ( do
     id <- identifier
-    ex <- parens call_params
+    reservedOp "("
+    ex <- call_params
+    reservedOp ")"
     return $ FunctionCall id ex
     ) 
   <|> do
@@ -312,23 +314,65 @@ escapeOrStringChar = try (string "''" >> return '\'')
             return $ c
 
 -- Evaluating expressions
-evaluate :: SymbolTable -> Expr -> Value
-evaluate ts (Const i) = i
-evaluate ts (Var v) = get ts v
-evaluate ts (Add e1 e2) = addValues (evaluate ts e1) (evaluate ts e2)
-evaluate ts (Sub e1 e2) = subValues (evaluate ts e1) (evaluate ts e2)
-evaluate ts (Mult e1 e2) = multValues (evaluate ts e1) (evaluate ts e2)
-evaluate ts (Div e1 e2) = divValues (evaluate ts e1) (evaluate ts e2)
-evaluate ts (FunctionCall id e) = (IntegerValue 0)
+evaluate :: SymbolTable -> Expr -> IO Value
+evaluate ts (Const i) = return i
+evaluate ts (Var v) = return $ get ts v
+evaluate ts (Add e1 e2) = do
+  ev1 <- evaluate ts e1
+  ev2 <- evaluate ts e2
+  return (addValues ev1 ev2)
+evaluate ts (Sub e1 e2) = do
+  ev1 <- evaluate ts e1
+  ev2 <- evaluate ts e2
+  return (subValues ev1 ev2)
+evaluate ts (Mult e1 e2) = do
+  ev1 <- evaluate ts e1
+  ev2 <- evaluate ts e2
+  return (multValues ev1 ev2)
+evaluate ts (Div e1 e2) = do
+  ev1 <- evaluate ts e1
+  ev2 <- evaluate ts e2
+  return (divValues ev1 ev2)
+evaluate ts (FunctionCall id e) = do
+  fun <- return $ get ts id
+  fParams <- return $ params fun
+  gParams <- return e
+  fScope  <- return $ scope fun
+
+  numOfParams <- return $ length fParams
+  givenParams <- return $ length gParams
+
+  if numOfParams /= givenParams
+    then do error $ "Different count of  function parameters in function '" ++ id ++ "'"
+  else
+    return $ IntegerValue 2
 
 -- Evaluating bool expressions
-decide :: SymbolTable -> BoolExpr -> Bool
-decide ts (Equal a b) = isEqual (evaluate ts a) (evaluate ts b)
-decide ts (NotEqual a b) = isNotEqual (evaluate ts a) (evaluate ts b)
-decide ts (Less a b) = isLess (evaluate ts a) (evaluate ts b)
-decide ts (More a b) = isMore (evaluate ts a) (evaluate ts b)
-decide ts (LessEqual a b) = isLessEqual (evaluate ts a) (evaluate ts b)
-decide ts (MoreEqual a b) = isMoreEqual (evaluate ts a) (evaluate ts b)
+decide :: SymbolTable -> BoolExpr -> IO Bool
+decide ts (Equal a b) = do
+  ev1 <- evaluate ts a
+  ev2 <- evaluate ts b
+  return (isEqual ev1 ev2)
+decide ts (NotEqual a b) = do
+  ev1 <- evaluate ts a
+  ev2 <- evaluate ts b
+  return (isNotEqual ev1 ev2)
+decide ts (Less a b) = do
+  ev1 <- evaluate ts a
+  ev2 <- evaluate ts b
+  return (isLess ev1 ev2)
+decide ts (More a b) = do
+  ev1 <- evaluate ts a
+  ev2 <- evaluate ts b
+  return (isMore ev1 ev2)
+decide ts (LessEqual a b) = do
+  ev1 <- evaluate ts a
+  ev2 <- evaluate ts b
+  return (isLessEqual ev1 ev2)
+decide ts (MoreEqual a b) = do
+  ev1 <- evaluate ts a
+  ev2 <- evaluate ts b
+  return (isMoreEqual ev1 ev2)
 
 addValues :: Value -> Value -> Value
 addValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 + val2)
@@ -432,14 +476,17 @@ interpret ts (Program c) = do
 
 interpret ts (Empty) = return ts
 
-interpret ts (Assign v e) = return $ set ts v $ evaluate ts e
+interpret ts (Assign v e) = do
+  ev <- evaluate ts e
+  return $ set ts v ev 
 
 interpret ts (Writeln (SConst s)) = do
   putStrLn s
   return ts
 
 interpret ts (Writeln e) = do
-  putStrLn $ show $ evaluate ts e
+  ev <- evaluate ts e
+  putStrLn $ show ev
   return ts
 
 interpret ts (Readln v) = do
@@ -447,12 +494,14 @@ interpret ts (Readln v) = do
   return $ set ts v $ IntegerValue i
 
 interpret ts (If cond c1 c2) = do
-  if decide ts cond
+  c <- decide ts cond
+  if c
     then interpret ts c1
     else interpret ts c2
 
 interpret ts w@(While cond c) = do
-  if decide ts cond
+  cnd <- decide ts cond
+  if cnd
     then do
       ts' <- interpret ts c
       interpret ts' w
@@ -509,7 +558,7 @@ data Value = IntegerValue { intVal :: Integer }
             | StringValue { strVal :: String }
             | DoubleValue { doubleVal :: Double}
             | Undeclared
-  
+
 parseAep input file =
   case parse aep file input of
     Left e -> error $ show e
