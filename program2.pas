@@ -1,5 +1,5 @@
 { Program 2: Vypocet faktorialu (rekurzivne) }
-var a : integer, vysl : integer;
+var a : integer, vysl : integer, b:string;
 function factorial (n : integer) : integer;
 function factorial (n : integer) : integer;
 	var temp_result : integer, decremented_n : integer, result : integer;
@@ -17,6 +17,8 @@ function factorial (n : integer) : integer;
 	end
 
 begin
+	b:='asd'+'123';
+	writeln(b);
 	writeln('Zadejte cislo pro vypocet faktorialu');
 	readln(a);
 	if a < 0 then

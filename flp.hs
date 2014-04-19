@@ -36,6 +36,7 @@ mystringliteral = lexeme $ do
 lexeme      = P.lexeme lexer
 whiteSpace  = P.whiteSpace lexer
 integer     = P.integer lexer
+naturalOrFloat= P.naturalOrFloat lexer
 parens      = P.parens lexer
 semi        = P.semi lexer
 identifier  = P.identifier lexer
@@ -78,8 +79,19 @@ oneVar =
   do
     i <- identifier
     reservedOp ":"
-    reserved "integer"
-    return $ GVarDec (i, IntegerValue 0)
+    type_of_Variable i
+	
+type_of_Variable i =
+		do
+		reserved "integer"
+		return $ GVarDec (i, IntegerValue 0)
+	  <|> do
+		reserved "double"
+		return $ GVarDec (i, DoubleValue 0.0)
+	  <|> do
+		reserved "string"
+		return $ GVarDec (i, StringValue "")
+	  <?> "ERR: global or function varible type"
 
 otherVars = 
   do
@@ -129,8 +141,19 @@ oneFunctionParameter =
   do
     id <- identifier
     reservedOp ":"
+    parametr_types id
+	
+parametr_types i = 
+  do
     reserved "integer"
-    return $ (id, IntegerValue 0)
+    return $ (i, IntegerValue 0)
+  <|> do
+    reserved "double"
+    return $ (i, DoubleValue 0.0)
+  <|> do
+    reserved "string"
+    return $ (i, StringValue "")
+  <?> "ERR: bad function, parameter or varible type"
     
 multipleFunctionParameters = 
   do
@@ -163,8 +186,7 @@ oneLocalVariable =
   do
     id <- identifier
     reservedOp ":"
-    reserved "integer"
-    return $ (id, IntegerValue 0)
+    parametr_types id
     
 multipleLocalVariables = 
   do
@@ -243,8 +265,8 @@ expr =
 
 term = 
   do
-    i <- integer
-    return $ Const $ IntegerValue $ fromInteger i
+    num <- naturalOrFloat;
+		return $ (case num of { Right i -> Const $ DoubleValue i; Left  i -> Const $ IntegerValue (fromInteger i) })
   <|> do
     s <- mystringliteral
     return $ SConst s
@@ -452,21 +474,33 @@ addValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 + val2)
 addValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 + fromIntegral val2)
 addValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 + val2)
 addValues (StringValue val1) (StringValue val2) = StringValue (val1 ++ val2)
+addValues g@(GlobalValue a) h@(GlobalValue b) = addValues (gVal g) (gVal h) 
+addValues g@(GlobalValue a) b = addValues (gVal g) b 
+addValues a h@(GlobalValue b) = addValues a (gVal h)
 
 subValues :: Value -> Value -> Value
 subValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 - val2)
 subValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 - val2)
 subValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 - fromIntegral val2)
 subValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 - val2)
+subValues g@(GlobalValue a) h@(GlobalValue b) = subValues (gVal g) (gVal h) 
+subValues g@(GlobalValue a) b = subValues (gVal g) b 
+subValues a h@(GlobalValue b) = subValues a (gVal h)
 
 multValues :: Value -> Value -> Value
 multValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 * val2)
 multValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 * val2)
 multValues (DoubleValue val1) (IntegerValue val2) = DoubleValue (val1 * fromIntegral val2)
 multValues (IntegerValue val1) (DoubleValue val2) = DoubleValue (fromIntegral val1 * val2)
+multValues g@(GlobalValue a) h@(GlobalValue b) = multValues (gVal g) (gVal h) 
+multValues g@(GlobalValue a) b = multValues (gVal g) b 
+multValues a h@(GlobalValue b) = multValues a (gVal h) 
 
 divValues :: Value -> Value -> Value
 divValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (div val1 val2)
+divValues g@(GlobalValue a) h@(GlobalValue b) = divValues (gVal g) (gVal h) 
+divValues g@(GlobalValue a) b = divValues (gVal g) b 
+divValues a h@(GlobalValue b) = divValues a (gVal h) 
 
 isEqual :: Value -> Value -> Bool
 isEqual (IntegerValue val1) (IntegerValue val2) = val1 == val2
@@ -474,6 +508,9 @@ isEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) == val2
 isEqual (DoubleValue val1) (DoubleValue val2) = val1 == val2
 isEqual (DoubleValue val1) (IntegerValue val2) = val1 == (fromIntegral val2)
 isEqual (StringValue val1) (StringValue val2) = val1 == val2
+isEqual g@(GlobalValue a) h@(GlobalValue b) = isEqual (gVal g) (gVal h) 
+isEqual g@(GlobalValue a) b = isEqual (gVal g) b 
+isEqual a h@(GlobalValue b) = isEqual a (gVal h)
 
 isNotEqual :: Value -> Value -> Bool
 isNotEqual (IntegerValue val1) (IntegerValue val2) = val1 /= val2
@@ -481,34 +518,49 @@ isNotEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) /= val2
 isNotEqual (DoubleValue val1) (DoubleValue val2) = val1 /= val2
 isNotEqual (DoubleValue val1) (IntegerValue val2) = val1 /= (fromIntegral val2)
 isNotEqual (StringValue val1) (StringValue val2) = val1 /= val2
+isNotEqual g@(GlobalValue a) h@(GlobalValue b) = isNotEqual (gVal g) (gVal h) 
+isNotEqual g@(GlobalValue a) b = isNotEqual (gVal g) b 
+isNotEqual a h@(GlobalValue b) = isNotEqual a (gVal h) 
 
 isLess :: Value -> Value -> Bool
 isLess (IntegerValue val1) (IntegerValue val2) = val1 < val2
 isLess (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) < val2
 isLess (DoubleValue val1) (DoubleValue val2) = val1 < val2
 isLess (DoubleValue val1) (IntegerValue val2) = val1 < (fromIntegral val2)
-isLess (StringValue val1) (StringValue val2) = val1 < val2 
+isLess (StringValue val1) (StringValue val2) = val1 < val2
+isLess g@(GlobalValue a) h@(GlobalValue b) = isLess (gVal g) (gVal h) 
+isLess g@(GlobalValue a) b = isLess (gVal g) b 
+isLess a h@(GlobalValue b) = isLess a (gVal h)  
 
 isMore :: Value -> Value -> Bool
 isMore (IntegerValue val1) (IntegerValue val2) = val1 > val2
 isMore (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) > val2
 isMore (DoubleValue val1) (DoubleValue val2) = val1 > val2
 isMore (DoubleValue val1) (IntegerValue val2) = val1 > (fromIntegral val2)
-isMore (StringValue val1) (StringValue val2) = val1 > val2 
+isMore (StringValue val1) (StringValue val2) = val1 > val2
+isMore g@(GlobalValue a) h@(GlobalValue b) = isMore (gVal g) (gVal h) 
+isMore g@(GlobalValue a) b = isMore (gVal g) b 
+isMore a h@(GlobalValue b) = isMore a (gVal h) 
 
 isLessEqual :: Value -> Value -> Bool
 isLessEqual (IntegerValue val1) (IntegerValue val2) = val1 <= val2
 isLessEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) <= val2
 isLessEqual (DoubleValue val1) (DoubleValue val2) = val1 <= val2
 isLessEqual (DoubleValue val1) (IntegerValue val2) = val1 <= (fromIntegral val2)
-isLessEqual (StringValue val1) (StringValue val2) = val1 <= val2 
+isLessEqual (StringValue val1) (StringValue val2) = val1 <= val2
+isLessEqual g@(GlobalValue a) h@(GlobalValue b) = isLessEqual (gVal g) (gVal h) 
+isLessEqual g@(GlobalValue a) b = isLessEqual (gVal g) b 
+isLessEqual a h@(GlobalValue b) = isLessEqual a (gVal h)   
 
 isMoreEqual :: Value -> Value -> Bool
 isMoreEqual (IntegerValue val1) (IntegerValue val2) = val1 >= val2
 isMoreEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) >= val2
 isMoreEqual (DoubleValue val1) (DoubleValue val2) = val1 >= val2
 isMoreEqual (DoubleValue val1) (IntegerValue val2) = val1 >= (fromIntegral val2)
-isMoreEqual (StringValue val1) (StringValue val2) = val1 >= val2 
+isMoreEqual (StringValue val1) (StringValue val2) = val1 >= val2
+isMoreEqual g@(GlobalValue a) h@(GlobalValue b) = isMoreEqual (gVal g) (gVal h) 
+isMoreEqual g@(GlobalValue a) b = isMoreEqual (gVal g) b 
+isMoreEqual a h@(GlobalValue b) = isMoreEqual a (gVal h) 
 
 startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
 startInterpret ts cs = do
@@ -603,8 +655,20 @@ interpret ts (Writeln e) = do
   return nts
 
 interpret ts (Readln v) = do
-  i <- readLn :: IO Integer
-  return $ set ts v $ IntegerValue i
+  val <- return $ get ts v
+  typ <- return $ getType val
+  i <- getLine  -- nactu hodnotu ze vstupu
+  let ntyp = if typ == "global"
+              then getType (gVal val)
+              else typ
+  let res = if ntyp == "integer" 
+              then IntegerValue (read i :: Integer)
+            else if ntyp == "double"
+              then DoubleValue (read i :: Double)
+            else StringValue i
+  if typ == "global" 
+    then return $ set ts v GlobalValue { gVal = res }
+    else return $ set ts v res
 
 interpret ts (If cond c1 c2) = do
   c <- decide ts cond
