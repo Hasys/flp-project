@@ -101,17 +101,6 @@ functionDeclarationParser =
     reserved "integer"
     semi
     functionDefinitionParser id fp
-  <|> do
-    reserved "function"
-    id <- identifier
-    reservedOp "("
-    fp <- functionParameters
-    reservedOp ")"
-    whiteSpace
-    reservedOp ":"
-    reserved "integer"
-    semi 
-    return $ FuncDeclare id fp
   <?> "ERROR: function declaration parsing error"
 
 -- Function parameters in function declaration
@@ -121,7 +110,7 @@ functionParameters =
     xs <- many multipleFunctionParameters
     return $ (x:xs)
   <|> do                 
-    return [] 
+    return []
   <?> "ERROR: Parameters in fucntion definition error"
 
 oneFunctionParameter =
@@ -129,7 +118,7 @@ oneFunctionParameter =
     id <- identifier
     reservedOp ":"
     reserved "integer"
-    return $ Assign id $ Const $ IntegerValue 0
+    return $ (id, IntegerValue 0) --Assign id $ Const $ IntegerValue 0
     
 multipleFunctionParameters = 
   do
@@ -141,9 +130,9 @@ functionDefinitionParser id fp  =
   do
     lv <- localVariables
     mc <- multipleCmd
-    return $ Function 
-  <|> do
-    return $ Function 
+    return $ Function id fp (Seq [mc]) (fp ++ lv)
+  <|> do                 
+    return $ FuncDeclare id fp 
   <?> "ERROR: function definition parsing error"
 
 -- Local variables in function definition
@@ -160,9 +149,10 @@ localVariables =
      
 oneLocalVariable =
   do
-    i <- identifier
+    id <- identifier
     reservedOp ":"
     reserved "integer"
+    return $ (id, IntegerValue 0)
     
 multipleLocalVariables = 
   do
@@ -290,7 +280,7 @@ set (s@(v,_):ss) var val =
 
 -- Getting values from symbols table
 get :: SymbolTable -> String -> Value
-get [] _ = error "Not found"
+get [] _ = Undeclared
 get (s@(var, val):ss) v =
   if v == var
     then val
@@ -401,15 +391,21 @@ interpret ts (Main (c:cs)) = do
   interpret ts' $ Main cs
 
 -- Fucntion interpreter
-interpret ts (Function) = return ts
-interpret ts (FuncDeclare id p) = do
+interpret ts (Function id fp scope lts) = do
+  var <- return $ get ts id
+  if (getType var) == "function"
+      then do
+        let f = FunctionValue { ident = id, params = fp, scope = scope, lts = lts }
+        return $ set ts id f
+      else error $ "Function '" ++ id ++ "' is not declared"
+
+interpret ts (FuncDeclare id fp) = do
   var <- return $ get ts id
   if (getType var) == "undeclared"
     then do
-      let func = FunctionValue { ident=id, params=p, scope=Empty, lts=[] }
+      let func = FunctionValue { ident=id, params=fp, scope=Empty, lts=[] }
       return $ set ts id func
     else error "Multiple function declaration"
-  return ts
 
 -- All program interpreter
 interpret ts (Program c) = do  
@@ -458,8 +454,8 @@ data Command = Empty
   | While BoolExpr Command 
   | Program Command
   | Vars
-  | Function
-  | FuncDeclare String [ Command ]
+  | Function String [ Variable ] Command SymbolTable
+  | FuncDeclare String [ Variable ]
   | Main [ Command ]
   | Assoc String
   deriving Show
@@ -486,7 +482,7 @@ type Variable = (String, Value)
 data Value = IntegerValue { intVal :: Integer }
             | FunctionValue  {
                               ident :: String,
-                              params :: [Command],
+                              params :: [ Variable ],
                               scope :: Command,
                               lts :: SymbolTable
                             }
