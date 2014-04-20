@@ -4,9 +4,17 @@ _________________________________
 
 Složení týmu:
 
--- Sergii Khunovych xkhuno00     
--- Kirill Gaevskii xgaevs01      
--- Maksym Boychuk xboych00  
+-- Bc. Sergii Khunovych xkhuno00     
+-- Bc. Kirill Gaevskii xgaevs01      
+-- Bc. Maksym Boychuk xboych00
+-- Bc. Dmitry Bolotov xbolot00 - nezúčastnil se, ale musili jsme přidat mu 15% podle podminek
+								 ve části 4.1 Rozdělení bodů ve souboru FLP-2014_zadani.pdf
+								 
+Alternatívní rozdělení bodů:
+
+xkhuno00:25
+xgaevs01:40
+xboych00:35
 
 README
 
@@ -20,5 +28,4 @@ OBSAH ARCHIVU
 [README]    - tento soubor s README informace
 [Makefile]  - soubor pro překlad pomocí gmake, podle souboru FLP-2014_zadani.pdf
 [rozdeleni] - soubor obsahující přínos jednotlivých členů týmu
-[flp.hs]    - haskell soubor obsahující datové struktury, lexikální a syntaktikckou analýzu, 
-			  interpret
+[flp.hs]    - haskell soubor obsahující datové struktury, lexikální a syntaktikckou analýzu, interpret
