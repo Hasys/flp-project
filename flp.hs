@@ -239,6 +239,13 @@ cmd =
   	do
     	semi
     	return Empty
+    <|> try ( 
+  		do
+    		id <- identifier
+    		reservedOp "("
+    		ex <- callWithParameters
+    		reservedOp ")"
+    		return $ CallFunction id ex )
   	<|> do
     	reserved "writeln"
     	e <- parens expr
@@ -268,6 +275,7 @@ cmd =
     	reserved "do"
     	c <- multipleCmd
     	return $ While b c
+    
   	<?> "ERROR: error in commads inside block"
 
 -- PARSING EXPRESSIONS
@@ -683,6 +691,52 @@ interpret ts (Function id fp sc lts) =
         	return $ set ts id f
       		else error $ "Multiple definition of function '" ++ id ++ "'"
 
+-- Function calling interpreter
+interpret ts (CallFunction id prs) = 
+	do
+		-- Put function parameters
+		globParams  <- return prs
+		-- Put function name
+  		funName     <- return $ get ts id
+  		-- Put paramaters for function in funName
+  		funParams   <- return $ params funName
+  		-- Put scope of funName function
+  		funScope    <- return $ scope funName
+  		-- Put number of function's parameters
+  		numOfParams <- return $ length funParams
+  		-- Put number of parameters
+  		givenParams <- return $ length globParams
+
+  		-- Check, if number of parameters that function is waiting
+  		-- is the same with number of parameters given
+  		if numOfParams /= givenParams
+  			
+  			-- if not - return error
+	    	then do error $ "ERROR: different count of parameters in function" ++ id ++ "'"
+	   	 	
+	   	 	-- else - call function computeParameters with symbol table
+	   	 	else do
+	        values <- computeParameters ts globParams
+
+	        -- Put list with new parameters
+	        lts   <- return $ lts funName
+	        lts'  <- setValuesOfParameters (lts++ts) funParams values
+
+	        -- Get type with "function"
+	        let functionTable =  [ x | x <- ts, (getType (snd x)) == "function" ]
+	        let newTS = functionTable ++ lts'
+
+	        newTS' <- interpret (newTS) funScope
+
+	        -- Get type with "return"
+	        let returns = [ x | x <- newTS', (getType (snd x)) == "return" ]
+
+	        -- Get type with "global"
+	        let globals  = [ x | x <- newTS', (getType (snd x)) == "global" ]
+
+	        i <- return $ get returns id
+	        return $ (globals)
+
 -- Function declaration interpreter
 interpret ts (FuncDeclare id fp) = 
 	do
@@ -817,6 +871,7 @@ data Command = Empty
 	| FuncDeclare String [ Variable ]
 	| Main [ Command ]
 	| Assoc String
+	| CallFunction String [ Expr ]
   	deriving (Show, Eq)
 
 data Expr = Const Value
