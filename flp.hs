@@ -45,7 +45,7 @@ reservedOp  = P.reservedOp lexer
 stringConst = P.stringLiteral lexer
 naturalOrFloat= P.naturalOrFloat lexer
 
--- Top-level parser (MAIN)
+-- TOP-LEVEL PARSER (MAIN) --
 aep = 
 	do
 	   whiteSpace
@@ -95,7 +95,7 @@ otherVars =
     	reservedOp ","
     	oneVar
 
--- PARSING FUNCTIONS
+-- PARSING FUNCTIONS --
 
 -- Parsing function declaration --
 functionDeclarationParser =
@@ -268,7 +268,7 @@ cmd =
     	reserved "do"
     	c <- multipleCmd
     	return $ While b c
-  	<?> "command"
+  	<?> "ERROR: error in commads inside block"
 
 -- PARSING EXPRESSIONS
 expr = buildExpressionParser operators term where
@@ -294,7 +294,7 @@ term =
     	v <- identifier
     	return $ Var v
   	<|> parens expr
-  	<?> "term"
+  	<?> "ERROR: error in terms"
 
 callWithParameters = 
 	do
@@ -315,7 +315,7 @@ boolExpr =
     	o <- relationOp
     	e2 <- expr
     	return $ o e1 e2
-  	<?> "boolean expression"
+  	<?> "ERROR: error in boolean expressions"
   	where
     	relationOp = relationOp' "=" Equal
       		<|> relationOp' "<>" NotEqual
@@ -323,7 +323,7 @@ boolExpr =
       		<|> relationOp' ">" More
       		<|> relationOp' "<=" LessEqual
       		<|> relationOp' ">=" MoreEqual
-      		<?> "relational operator"
+      		<?> "ERROR: error in relations in bool"
     	relationOp' name funOp = do
       		reservedOp name
       		return funOp
@@ -362,6 +362,7 @@ isThereToSingleQuotesInARow = try (string "''" >> return '\'')
 		c <- noneOf "'"
 		return $ c
 
+-- Update global variables, after Assign or Writeln command
 updatingOfGlobalVars :: SymbolTable -> SymbolTable -> IO SymbolTable
 updatingOfGlobalVars ts [] = return ts
 updatingOfGlobalVars ts [(id, value)] = 
@@ -398,35 +399,51 @@ evaluate ts (Div e1 e2) =
   		eval1 <- evaluate ts e1
   		eval2 <- evaluate ts e2
   		return $ ((divValues (fst eval1) (fst eval2)), [])
--- KOPAI
-evaluate ts (FunctionCall id e) = 
+-- Evaluating of calling of the function
+evaluate ts (FunctionCall id prs) = 
 	do
-  		fun <- return $ get ts id
-  		fParams <- return $ params fun
-  		gParams <- return e
-  		fScope  <- return $ scope fun
-  		numOfParams <- return $ length fParams
-  		givenParams <- return $ length gParams
+		-- Put function parameters
+		globParams  <- return prs
+		-- Put function name
+  		funName     <- return $ get ts id
+  		-- Put paramaters for function in funName
+  		funParams   <- return $ params funName
+  		-- Put scope of funName function
+  		funScope    <- return $ scope funName
+  		-- Put number of function's parameters
+  		numOfParams <- return $ length funParams
+  		-- Put number of parameters
+  		givenParams <- return $ length globParams
 
+  		-- Check, if number of parameters that function is waiting
+  		-- is the same with number of parameters given
   		if numOfParams /= givenParams
-	    	then do error $ "Different count of  function parameters in function '" ++ id ++ "'"
+  			
+  			-- if not - return error
+	    	then do error $ "ERROR: different count of parameters in function" ++ id ++ "'"
+	   	 	
+	   	 	-- else - call function computeParameters with symbol table
 	   	 	else do
-	        vals <- computeParameters ts gParams
+	        values <- computeParameters ts globParams
 
-	        lts   <- return $ lts fun
-	        lts'  <- setValuesOfParameters (lts++ts) fParams vals
+	        -- Put list with new parameters
+	        lts   <- return $ lts funName
+	        lts'  <- setValuesOfParameters (lts++ts) funParams values
 
-	        let ft = [ x | x <- ts, (getType (snd x)) == "function" ]
-	        let nts = ft ++ lts'
+	        -- Get type with "function"
+	        let functionTable =  [ x | x <- ts, (getType (snd x)) == "function" ]
+	        let newTS = functionTable ++ lts'
 
-	        nts' <- interpret (nts) fScope
+	        newTS' <- interpret (newTS) funScope
 
-	        let rts = [ x | x <- nts', (getType (snd x)) == "return" ]
+	        -- Get type with "return"
+	        let returns = [ x | x <- newTS', (getType (snd x)) == "return" ]
 
-	        let gv = [ x | x <- nts', (getType (snd x)) == "global"]
+	        -- Get type with "global"
+	        let globals  = [ x | x <- newTS', (getType (snd x)) == "global" ]
 
-	        ret <- return $ get rts id
-	        return $ ((retVal ret), gv)
+	        i <- return $ get returns id
+	        return $ ((retVal i), globals)
 
 -- Computing parameters of function
 computeParameters :: SymbolTable -> [Expr] -> IO [Value]
@@ -448,18 +465,25 @@ setValuesOfParameters :: SymbolTable -> [Variable] -> [Value] -> IO SymbolTable
 setValuesOfParameters ts [] [] = return ts
 setValuesOfParameters ts ((id, value):xs) (y:ys) = 
 	do
+		-- Check type before return
   		val <- checkTypeOfAssign value y
   		ts' <- return $ set ts id val   
   		setValuesOfParameters ts' xs ys
 
--- Checking type when assigning
+-- CHECKING TYPE WHEN ASSIGNING --
 checkTypeOfAssign :: Value -> Value -> IO Value
-checkTypeOfAssign (IntegerValue x) (IntegerValue y) = return $ IntegerValue y 
-checkTypeOfAssign (DoubleValue x) (DoubleValue y) = return $ DoubleValue y
-checkTypeOfAssign (GlobalStringValue x) (GlobalStringValue y) = return $ GlobalStringValue y 
-checkTypeOfAssign (DoubleValue x) (IntegerValue y) = return $ DoubleValue $ fromIntegral y
 
+-- for integer
+checkTypeOfAssign (IntegerValue x) (IntegerValue y) = return $ IntegerValue y 
+-- for double
+checkTypeOfAssign (DoubleValue x) (DoubleValue y) = return $ DoubleValue y
+-- for string in global
+checkTypeOfAssign (GlobalStringValue x) (GlobalStringValue y) = return $ GlobalStringValue y 
+-- for integer comparing with double
+checkTypeOfAssign (DoubleValue x) (IntegerValue y) = return $ DoubleValue $ fromIntegral y
 checkTypeOfAssign r@(ReturnValue x) y = checkTypeOfAssign (retVal r) y
+
+-- Checking types of global values
 checkTypeOfAssign g@(GlobalValue x) h@(GlobalValue y) = checkTypeOfAssign g (globalValue h)
 checkTypeOfAssign g@(GlobalValue x) y = 
 	do
@@ -473,9 +497,9 @@ checkTypeOfAssign x h@(GlobalValue y) =
   		val <- checkTypeOfAssign x var
   		return val
   
-checkTypeOfAssign (IntegerValue x) y = error "Incompatible assignment types"
-checkTypeOfAssign (DoubleValue x) y = error "Incompatible assignment types"
-checkTypeOfAssign (GlobalStringValue x) y = error "Incompatible assignment types"
+checkTypeOfAssign (IntegerValue x) y = error "Types are incompatible for assignment"
+checkTypeOfAssign (DoubleValue x) y = error "Types are incompatible for assignment"
+checkTypeOfAssign (GlobalStringValue x) y = error "Types are incompatible for assignment"
 
 -- EVALUATING BOOL EXPRESSIONS --
 decide :: SymbolTable -> BoolExpr -> IO Bool
@@ -511,6 +535,7 @@ decide ts (MoreEqual x y) =
   		return $ isMoreEqual (fst eval1) (fst eval2)
 
 -- CALCULATING OF EXPRESSIONS --
+-- +
 addValues :: Value -> Value -> Value
 addValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 + val2)
 addValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 + val2)
@@ -521,6 +546,7 @@ addValues x@(GlobalValue val1) y@(GlobalValue val2) = addValues (globalValue x) 
 addValues x@(GlobalValue val1) val2 = addValues (globalValue x) val2 
 addValues val1 y@(GlobalValue val2) = addValues val1 (globalValue y)
 
+-- -
 subValues :: Value -> Value -> Value
 subValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 - val2)
 subValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 - val2)
@@ -530,6 +556,7 @@ subValues x@(GlobalValue val1) y@(GlobalValue val2) = subValues (globalValue x) 
 subValues x@(GlobalValue val1) val2 = subValues (globalValue x) val2 
 subValues val1 y@(GlobalValue val2) = subValues val1 (globalValue y)
 
+-- *
 multValues :: Value -> Value -> Value
 multValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (val1 * val2)
 multValues (DoubleValue val1) (DoubleValue val2) = DoubleValue (val1 * val2)
@@ -539,6 +566,7 @@ multValues x@(GlobalValue val1) y@(GlobalValue val2) = multValues (globalValue x
 multValues x@(GlobalValue val1) val2 = multValues (globalValue x) val2 
 multValues val1 y@(GlobalValue val2) = multValues val1 (globalValue y)
 
+-- /
 divValues :: Value -> Value -> Value
 divValues (IntegerValue val1) (IntegerValue val2) = IntegerValue (div val1 val2)
 divValues x@(GlobalValue val1) y@(GlobalValue val2) = divValues (globalValue x) (globalValue y) 
@@ -555,6 +583,7 @@ isEqual x@(GlobalValue val1) y@(GlobalValue val2) = isEqual (globalValue x) (glo
 isEqual x@(GlobalValue val1) val2 = isEqual (globalValue x) val2 
 isEqual val1 y@(GlobalValue val2) = isEqual val1 (globalValue y)
 
+-- !=
 isNotEqual :: Value -> Value -> Bool
 isNotEqual (IntegerValue val1) (IntegerValue val2) = val1 /= val2
 isNotEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) /= val2
@@ -565,6 +594,7 @@ isNotEqual x@(GlobalValue val1) y@(GlobalValue val2) = isNotEqual (globalValue x
 isNotEqual x@(GlobalValue val1) val2 = isNotEqual (globalValue x) val2 
 isNotEqual val1 y@(GlobalValue val2) = isNotEqual val1 (globalValue y)
 
+-- <
 isLess :: Value -> Value -> Bool
 isLess (IntegerValue val1) (IntegerValue val2) = val1 < val2
 isLess (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) < val2
@@ -575,6 +605,7 @@ isLess x@(GlobalValue val1) y@(GlobalValue val2) = isLess (globalValue x) (globa
 isLess x@(GlobalValue val1) val2 = isLess (globalValue x) val2 
 isLess val1 y@(GlobalValue val2) = isLess val1 (globalValue y) 
 
+-- >
 isMore :: Value -> Value -> Bool
 isMore (IntegerValue val1) (IntegerValue val2) = val1 > val2
 isMore (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) > val2
@@ -585,6 +616,7 @@ isMore x@(GlobalValue val1) y@(GlobalValue val2) = isMore (globalValue x) (globa
 isMore x@(GlobalValue val1) val2 = isMore (globalValue x) val2 
 isMore val1 y@(GlobalValue val2) = isMore val1 (globalValue y)
 
+-- <=
 isLessEqual :: Value -> Value -> Bool
 isLessEqual (IntegerValue val1) (IntegerValue val2) = val1 <= val2
 isLessEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) <= val2
@@ -595,6 +627,7 @@ isLessEqual x@(GlobalValue val1) y@(GlobalValue val2) = isLessEqual (globalValue
 isLessEqual x@(GlobalValue val1) val2 = isLessEqual (globalValue x) val2 
 isLessEqual val1 y@(GlobalValue val2) = isLessEqual val1 (globalValue y) 
 
+-- >=
 isMoreEqual :: Value -> Value -> Bool
 isMoreEqual (IntegerValue val1) (IntegerValue val2) = val1 >= val2
 isMoreEqual (IntegerValue val1) (DoubleValue val2) = (fromIntegral val1) >= val2
@@ -605,25 +638,32 @@ isMoreEqual x@(GlobalValue val1) y@(GlobalValue val2) = isMoreEqual (globalValue
 isMoreEqual x@(GlobalValue val1) val2 = isMoreEqual (globalValue x) val2 
 isMoreEqual val1 y@(GlobalValue val2) = isMoreEqual val1 (globalValue y)
 
--- Start of interpreting
+-- START OF INTERPRETING --
 startInterpret :: SymbolTable -> [Command] -> IO SymbolTable
 startInterpret ts cs = 
 	do
 		interpret ts $ Main cs
 
--- INTERPRETER
+-- INTERPRETER --
 interpret :: SymbolTable -> Command -> IO SymbolTable
 -- Declaration of gloval variables
-interpret ts (GlovalVariableDeclaration v) = 
+interpret ts (GlovalVariableDeclaration glvar) = 
 	do
-  		name <- return $ fst (v)
-  		val <- return $ snd (v)
-  		var <- return $ get ts name
-  		if (getType var) == "undeclared"
-  			then do
-  				let g = GlobalValue { globalValue = val }
-  				return $ set ts name g
-  		else error "ERR: Multiple variable declaration"
+		-- Get name of variable
+  		name <- return $ fst (glvar)
+
+  		-- Get value of variable
+  		value <- return $ snd (glvar)
+
+  		-- Return it's name from symbol table
+  		variable <- return $ get ts name
+
+  		-- If it's not declated yet - declare it with value
+  		if (getType variable) == "undeclared" then do
+			let glob = GlobalValue { globalValue = value }
+			return $ set ts name glob
+		-- If already declared - put error
+  		else error "ERROR: Multiple variable declaration"
 
 
 -- Main block interpreter
@@ -660,26 +700,30 @@ interpret ts (Program c) =
 interpret ts (Empty) = return ts
 
 -- Assigning values command
--- KOPAI
 interpret ts (Assign v e) = 
 	do
+		-- Get list of variables from symbol table,
+		-- and check for in won't be a function
+		let lov = [ x | x <- ts, (getType (snd x)) /= "function" ]
 
-	  let tt = [ x | x <- ts, (getType (snd x)) /= "function" ]
+		variable <- return $ get lov v
 
-	  var <- return $ get tt v
-	  if (getType var) == "undeclared"
-	    then error ("Cannot assign to undeclared variable" ++ show v )
-	  else if (getType var) == "return"
-	    then do
-	      val <- evaluate ts e
-	      res <- checkTypeOfAssign var (fst val)
-	      let f = var {retVal=res}
-	      return $ set ts v f
-	  else do
-	    val <- evaluate ts e
-	    res <- checkTypeOfAssign var (fst val)
-	    nts <- updatingOfGlobalVars ts (snd val)
-	    return $ set nts v res
+		-- Put error if variable is undeclared
+		if (getType variable) == "undeclared" then error ("ERROR: You are trying to assign to undeclared variable" ++ show v )
+		
+		-- If type of variable is return - get from symbol table names
+		-- then, check types and put value to name
+		else if (getType variable) == "return" 
+			then do
+				value <- evaluate ts e
+				result <- checkTypeOfAssign variable (fst value)
+				let f = variable {retVal=result}
+				return $ set ts v f
+			else do
+				value <- evaluate ts e
+				result <- checkTypeOfAssign variable (fst value)
+				updatedTS <- updatingOfGlobalVars ts (snd value)
+				return $ set updatedTS v result
 
 -- Writeln command (put string constant)
 interpret ts (Writeln (SConst s)) = 
@@ -687,68 +731,76 @@ interpret ts (Writeln (SConst s)) =
   		putStrLn s
   		return ts
 
--- Writeln command (put value) KOPAI
-interpret ts (Writeln e) = 
+-- Writeln command (put value)
+interpret ts (Writeln wl) = 
 	do
-		val <- evaluate ts e
-		typ <- return $ getType (fst val)
-		let v = if typ == "global"
-		        then globalValue (fst val)
-		        else (fst val)
+		-- Get value from symbol table
+		value <- evaluate ts wl
 
-		typ <- return $ getType v
+		-- Get type of that value
+		typeofValue <- return $ getType (fst value)
 
-		if typ == "integer" 
-		then putStrLn $ show $ intVal v
-		else if typ == "double"
-		then putStrLn $ show $ doubleVal v
-		else if typ == "string"
-		then putStrLn $ strVal v        
-		else error "Bad output type for printing"
+		-- If it is global - get global value, else - local
+		let ofVal = if typeofValue == "global" then globalValue (fst value)
+		        	else (fst value)
 
-		nts <- updatingOfGlobalVars ts (snd val)
-		return nts
+		typeofValue <- return $ getType ofVal
 
--- Command reading from input KOPAI
+		-- Checking type of value and returnig function depending on that
+		if typeofValue 		== "integer" then putStrLn $ show $ intVal ofVal
+		else if typeofValue == "double"  then putStrLn $ show $ doubleVal ofVal
+		else if typeofValue == "string"  then putStrLn $ strVal ofVal
+		-- If no type founded - error
+
+		else error "Bad output type for 'Writeln'"
+
+		-- Updating symbol table
+		updatedTS <- updatingOfGlobalVars ts (snd value)
+		return updatedTS
+
+-- Command reading from input
 interpret ts (Readln v) = 
 	do
-		val <- return $ get ts v
-		typ <- return $ getType val
-		i <- getLine  -- nactu hodnotu ze vstupu
-		let ntyp = if typ == "global"
-		          then getType (globalValue val)
-		          else typ
-		let res = if ntyp == "integer" 
-		          then IntegerValue (read i :: Integer)
-		        else if ntyp == "double"
-		          then DoubleValue (read i :: Double)
-		        else GlobalStringValue i
-		if typ == "global" 
-		then return $ set ts v GlobalValue { globalValue = res }
-		else return $ set ts v res
+		-- Get from symbol table value and put into "value"
+		value <- return $ get ts v
+		
+		-- Get type of that value
+		typeofValue <- return $ getType value
+		
+		-- Get line from input and put it to the "line"
+		line <- getLine
+		-- Checking, what type is that, global or local
+		let typeVal = if typeofValue == "global" then getType (globalValue value) else typeofValue
+		let result = if typeVal == "integer" then IntegerValue (read line :: Integer)
+		        else if typeVal == "double"  then DoubleValue  (read line :: Double)
+		        else GlobalStringValue line
+		
+		-- If in is gloval - set it to table symbol as global, else - local
+		if typeofValue == "global" then return $ set ts v GlobalValue { globalValue = result }
+		else return $ set ts v result
 
 -- IF statement command (IF - THEN - ELSE)
 interpret ts (If cond x y) = 
 	do
-  		a <- decide ts cond
-  		if a
-    		then interpret ts x
-    		else interpret ts y
+  		decideRes <- decide ts cond
+  		if decideRes then interpret ts x
+			else interpret ts y
 
 -- While cyclus command 
-interpret ts w@(While cond a) = do
-	condition <- decide ts cond
-	if condition
-		then do
- 		ts' <- interpret ts a
-		interpret ts' w
-		else return ts
-
-interpret ts (Seq []) = return ts
-interpret ts (Seq (c:cs)) = 
+interpret ts w@(While cond x) = 
 	do
-		ts' <- interpret ts c
-		interpret ts' $ Seq cs
+		condition <- decide ts cond
+		if condition then do
+ 			ts' <- interpret ts x
+			interpret ts' w
+			else return ts
+
+-- Sequence
+interpret ts (Seq []) = return ts
+interpret ts (Seq (x:xs)) = 
+	do
+		ts' <- interpret ts x
+		interpret ts' $ Seq xs
 
 -- Data structures
 data Command = Empty
