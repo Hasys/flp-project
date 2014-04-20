@@ -378,6 +378,7 @@ updatingOfGlobalVars ts ((id, value):xs) =
 -- Evaluating expressions
 evaluate :: SymbolTable -> Expr -> IO EvalReturn
 evaluate ts (Const i) = return $ (i, [])
+evaluate ts (SConst s) = return $ (GlobalStringValue s, [])
 evaluate ts (Var v) = return $ ((get ts v), [])
 evaluate ts (Add e1 e2) = 
 	do
@@ -674,13 +675,13 @@ interpret ts (Main (c:cs)) =
   		interpret ts' $ Main cs
 
 -- Function definition interpreter
-interpret ts (Function id fp scope lts) = 
+interpret ts (Function id fp sc lts) = 
 	do
   		var <- return $ get ts id
-  		if (getType var) == "function" then do
-        	let f = FunctionValue { ident = id, params = fp, scope = scope, lts = lts }
+  		if (getType var) == "undeclared" || (scope var) == Empty then do
+        	let f = FunctionValue { ident = id, params = fp, scope = sc, lts = lts }
         	return $ set ts id f
-      		else error $ "Function '" ++ id ++ "' is not declared"
+      		else error $ "Multiple definition of function '" ++ id ++ "'"
 
 -- Function declaration interpreter
 interpret ts (FuncDeclare id fp) = 
@@ -689,7 +690,7 @@ interpret ts (FuncDeclare id fp) =
   		if (getType var) == "undeclared" then do
       		let func = FunctionValue { ident=id, params=fp, scope=Empty, lts=[] }
       		return $ set ts id func
-    		else error "Multiple function declaration"
+    		else error $ "Multiple function declaration for '" ++ id ++ "'"
 
 -- All program interpreter
 interpret ts (Program c) = 
@@ -816,7 +817,7 @@ data Command = Empty
 	| FuncDeclare String [ Variable ]
 	| Main [ Command ]
 	| Assoc String
-  	deriving Show
+  	deriving (Show, Eq)
 
 data Expr = Const Value
 	| SConst String
@@ -826,7 +827,7 @@ data Expr = Const Value
 	| Mult Expr Expr
 	| FunctionCall String [Expr]
 	| Div Expr Expr
-  	deriving Show
+  	deriving (Show, Eq)
 
 data BoolExpr = Equal Expr Expr
 	| NotEqual Expr Expr
@@ -834,7 +835,7 @@ data BoolExpr = Equal Expr Expr
 	| More Expr Expr
 	| LessEqual Expr Expr
 	| MoreEqual Expr Expr
-  	deriving Show
+  	deriving (Show, Eq)
 
 data Value = IntegerValue { intVal :: Integer }
 	| DoubleValue { doubleVal :: Double}
@@ -843,7 +844,7 @@ data Value = IntegerValue { intVal :: Integer }
 	| ReturnValue { retVal :: Value }
 	| GlobalValue { globalValue :: Value }
 	| Undeclared
-	deriving Show
+	deriving (Show, Eq)
 
 -- Types definition
 type SymbolTable = [(String, Value)]
