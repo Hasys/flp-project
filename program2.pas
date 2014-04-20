@@ -17,8 +17,6 @@ function factorial (n : integer) : integer;
 	end
 
 begin
-	b:='asd'+'123';
-	writeln(b);
 	writeln('Zadejte cislo pro vypocet faktorialu');
 	readln(a);
 	if a < 0 then
