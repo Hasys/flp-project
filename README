@@ -1,0 +1,24 @@
+_________________________________
+-- FLP projekt (FLP-2014-Pascal) 
+_________________________________
+
+Složení týmu:
+
+-- Sergii Khunovych xkhuno00     
+-- Kirill Gaevskii xgaevs01      
+-- Maksym Boychuk xboych00  
+
+README
+
+- Realizace interpretu FLP-2014-Pascal byla nadšena cvičenimí předmětu FLP, demo cvičení a
+  častečně latkámí přednášek ze kurzu předmětu. Taky čast informace byla samostatnou prace
+  s jazykem Haskell
+- Ve realizace projektu byly implemntovany všechny povinné požadavky ze souboru FLP-fun-03_pascal.pdf
+
+OBSAH ARCHIVU
+
+[README]    - tento soubor s README informace
+[Makefile]  - soubor pro překlad pomocí gmake, podle souboru FLP-2014_zadani.pdf
+[rozdeleni] - soubor obsahující přínos jednotlivých členů týmu
+[flp.hs]    - haskell soubor obsahující datové struktury, lexikální a syntaktikckou analýzu, 
+			  interpret
