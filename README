@@ -7,8 +7,7 @@ Složení týmu:
 -- Bc. Sergii Khunovych xkhuno00     
 -- Bc. Kirill Gaevskii xgaevs01      
 -- Bc. Maksym Boychuk xboych00
--- Bc. Dmitry Bolotov xbolot00 - nezúčastnil se, ale musili jsme přidat mu 15% podle podminek
-								 ve části 4.1 Rozdělení bodů ve souboru FLP-2014_zadani.pdf
+-- Bc. Dmitry Bolotov xbolot00 - nezúčastnil se, ale musili jsme přidat mu 15% podle podminekve části 4.1 Rozdělení bodů ve souboru FLP-2014_zadani.pdf
 								 
 Alternatívní rozdělení bodů:
 
@@ -18,10 +17,9 @@ xboych00:35
 
 README
 
-- Realizace interpretu FLP-2014-Pascal byla nadšena cvičenimí předmětu FLP, demo cvičení a
-  častečně latkámí přednášek ze kurzu předmětu. Taky čast informace byla samostatnou prace
-  s jazykem Haskell
-- Ve realizace projektu byly implemntovany všechny povinné požadavky ze souboru FLP-fun-03_pascal.pdf
+- Realizace interpretu FLP-2014-Pascal byla nadšena cvičenimí předmětu FLP, demo cvičení a častečně latkámí přednášek ze kurzu předmětu. 
+  Taky čast informace byla samostatnou prace s jazykem Haskell
+- Ve realizace projektu byly implemntovany všechny povinné požadavky a navíc překrytí globálních proměnných lokálními ze souboru FLP-fun-03_pascal.pdf
 
 OBSAH ARCHIVU
 
