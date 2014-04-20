@@ -1,4 +1,4 @@
-{ Example 10: Ruzné děklarace funkcii ERROR }
+{ Example 11: Ruzné děklarace funkcii ERROR }
 var res: integer, s: string;
 
 function helloWorld (s: string) : integer;
