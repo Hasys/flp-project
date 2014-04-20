@@ -274,8 +274,7 @@ cmd =
     	b <- boolExpr
     	reserved "do"
     	c <- multipleCmd
-    	return $ While b c
-    
+    	return $ While b c    
   	<?> "ERROR: error in commads inside block"
 
 -- PARSING EXPRESSIONS
@@ -287,7 +286,7 @@ expr = buildExpressionParser operators term where
 term = 
 	do
     	num <- naturalOrFloat;
-		return $ (case num of { Right i -> Const $ DoubleValue i; Left  i -> Const $ IntegerValue (fromInteger i) })
+		  return $ (case num of { Right i -> Const $ DoubleValue i; Left  i -> Const $ IntegerValue (fromInteger i) })
   	<|> do
     	s <- mystringliteral
     	return $ SConst s
@@ -298,9 +297,9 @@ term =
     		ex <- callWithParameters
     		reservedOp ")"
     		return $ FunctionCall id ex ) 
- 	<|> do
-    	v <- identifier
-    	return $ Var v
+ 	  <|> do
+        v <- identifier
+        return $ Var v
   	<|> parens expr
   	<?> "ERROR: error in terms"
 
@@ -309,8 +308,8 @@ callWithParameters =
     	x  <- expr 
     	xs <- many expressionsSequence
     	return $ (x:xs)
-  	<|> do
-    return []
+  <|> do
+      return []
 
 expressionsSequence = 
   	do
@@ -735,8 +734,7 @@ interpret ts (CallFunction id prs) =
 	        let globals  = [ x | x <- newTS', (getType (snd x)) == "global" ]
 
 	        i <- return $ get returns id
-	        return $ (globals)
-
+	        return ts
 -- Function declaration interpreter
 interpret ts (FuncDeclare id fp) = 
 	do
@@ -872,7 +870,7 @@ data Command = Empty
 	| Main [ Command ]
 	| Assoc String
 	| CallFunction String [ Expr ]
-  	deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data Expr = Const Value
 	| SConst String
@@ -882,7 +880,7 @@ data Expr = Const Value
 	| Mult Expr Expr
 	| FunctionCall String [Expr]
 	| Div Expr Expr
-  	deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data BoolExpr = Equal Expr Expr
 	| NotEqual Expr Expr
@@ -890,7 +888,7 @@ data BoolExpr = Equal Expr Expr
 	| More Expr Expr
 	| LessEqual Expr Expr
 	| MoreEqual Expr Expr
-  	deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data Value = IntegerValue { intVal :: Integer }
 	| DoubleValue { doubleVal :: Double}
